@@ -1,0 +1,323 @@
+import '../api/api_client.dart';
+
+/// Bangla-first strings with an English toggle. Missing keys fall back to the key
+/// itself; a unit test checks both languages have exactly the same keys.
+class S {
+  const S(this.lang);
+
+  final String lang; // 'bn' | 'en'
+
+  bool get isBangla => lang != 'en';
+
+  String t(String key) => (isBangla ? _bn[key] : _en[key]) ?? _en[key] ?? key;
+
+  /// `{n}`-style placeholders.
+  String tf(String key, Map<String, Object> values) {
+    var text = t(key);
+    values.forEach((k, v) => text = text.replaceAll('{$k}', '$v'));
+    return text;
+  }
+
+  /// Clear, plain error text for the user (never a stack trace).
+  String error(Object error) {
+    if (error is ApiException) {
+      final base = switch (error.kind) {
+        ApiErrorKind.network => t('err_network'),
+        ApiErrorKind.timeout => t('err_timeout'),
+        ApiErrorKind.unauthorized => t('err_unauthorized'),
+        ApiErrorKind.forbidden => t('err_forbidden'),
+        ApiErrorKind.notFound => t('err_notfound'),
+        ApiErrorKind.invalid => t('err_invalid'),
+        ApiErrorKind.rateLimited => t('err_rate'),
+        ApiErrorKind.unavailable => t('err_unavailable'),
+        ApiErrorKind.server => t('err_server'),
+        ApiErrorKind.badResponse => t('err_bad'),
+      };
+      // The agent's own message explains e.g. "ANTHROPIC_API_KEY is empty".
+      return error.kind == ApiErrorKind.unavailable && error.detail.isNotEmpty
+          ? '$base\n(${error.detail})'
+          : base;
+    }
+    return t('err_unknown');
+  }
+
+  static List<String> get keys => _bn.keys.toList();
+  static Set<String> get bnKeys => _bn.keys.toSet();
+  static Set<String> get enKeys => _en.keys.toSet();
+}
+
+const Map<String, String> _bn = {
+  'app_title': 'Cortex One',
+  // pairing
+  'pair_title': 'ল্যাপটপের সাথে যুক্ত করুন',
+  'pair_help':
+      'ল্যাপটপে PowerShell খুলে এই কমান্ড চালান:\npython -m agent.main pair\nযে ৬ অঙ্কের কোড আসবে সেটি নিচে লিখুন (৫ মিনিট বৈধ, একবারই চলে)।',
+  'server_label': 'ল্যাপটপের ঠিকানা (Tailscale IP)',
+  'server_hint': '100.x.y.z:8765',
+  'code_label': '৬ অঙ্কের কোড',
+  'pair_button': 'যুক্ত করুন',
+  'pairing': 'যুক্ত হচ্ছে…',
+  'server_invalid': 'ঠিকানা সঠিক নয়। উদাহরণ: 100.64.1.2:8765',
+  'code_invalid': 'কোড অবশ্যই ৬টি অঙ্ক হতে হবে।',
+  'pair_privacy': 'টোকেন শুধু এই ফোনের সুরক্ষিত স্টোরেজে (Keystore) থাকে।',
+  // navigation
+  'nav_home': 'হোম',
+  'nav_pending': 'নিশ্চিতকরণ',
+  'nav_audit': 'লগ',
+  'nav_sms': 'SMS',
+  // emergency
+  'emergency_stop': 'জরুরি বন্ধ',
+  'emergency_sub': 'চলমান সব কাজ থামান',
+  'emergency_done': 'থামানো হয়েছে',
+  // status
+  'status_title': 'ল্যাপটপের অবস্থা',
+  'status_refresh': 'রিফ্রেশ',
+  'cpu': 'সিপিইউ',
+  'ram': 'র‍্যাম',
+  'disk': 'ডিস্ক',
+  'battery': 'ব্যাটারি',
+  'plugged': 'চার্জে আছে',
+  'on_battery': 'ব্যাটারিতে',
+  'uptime': 'চালু আছে',
+  'free': 'ফাঁকা',
+  'status_loading': 'অবস্থা দেখা হচ্ছে…',
+  'hours_short': 'ঘণ্টা',
+  'minutes_short': 'মিনিট',
+  // command box
+  'command_title': 'আদেশ দিন',
+  'command_hint': 'যেমন: Downloads-এর PDF ফাইলগুলো দেখাও',
+  'send': 'পাঠান',
+  'mic_start': 'বলুন',
+  'mic_stop': 'থামান',
+  'listening': 'শুনছি…',
+  'voice_unavailable':
+      'এই ফোনে ভয়েস টাইপিং চালু করা যায়নি। মাইক্রোফোনের অনুমতি ও স্পিচ সার্ভিস দেখুন।',
+  'voice_hint': 'বলা শেষ হলে লেখাটি ঠিক করে নিন, তারপর "পাঠান" চাপুন।',
+  'voice_lang': 'ভয়েসের ভাষা',
+  'steps': 'ধাপসমূহ',
+  'reply': 'উত্তর',
+  'task_running': 'কাজ চলছে…',
+  'task_stopped': 'কাজ থেমে গেছে',
+  'task_timeout': 'অনেক সময় লাগছে। পরে "লগ" দেখুন।',
+  'waiting_confirm': 'আপনার নিশ্চিতকরণের অপেক্ষায়। অনুমতি ছাড়া কিছু চলবে না।',
+  'go_pending': 'দেখুন',
+  // quick actions
+  'quick_title': 'দ্রুত কাজ',
+  'q_lock': 'স্ক্রিন লক',
+  'q_status': 'অবস্থা',
+  'q_downloads': 'Downloads ফাইল',
+  'q_apps': 'অ্যাপ খুলুন',
+  'no_downloads': 'Downloads ফোল্ডার অনুমোদিত তালিকায় নেই।',
+  'no_apps': 'কোনো অ্যাপ অনুমোদিত নেই।',
+  'items_count': '{n}টি আইটেম',
+  'folder_label': 'ফোল্ডার',
+  'file_label': 'ফাইল',
+  'ok': 'ঠিক আছে',
+  // pending confirmations
+  'pending_title': 'নিশ্চিতকরণের অপেক্ষায়',
+  'pending_empty': 'এখন কোনো অনুরোধ অপেক্ষায় নেই।',
+  'pending_note':
+      'AI নিজে এগুলো চালাতে পারে না। আপনি নিশ্চিত না করলে কিছুই হবে না।',
+  'act_shutdown': 'ল্যাপটপ বন্ধ করা',
+  'act_restart': 'ল্যাপটপ রিস্টার্ট করা',
+  'act_run_script': 'স্ক্রিপ্ট চালানো',
+  'act_other': 'অনুরোধ',
+  'will_run': 'ঠিক যা চালানো হবে:',
+  'script_label': 'স্ক্রিপ্ট',
+  'save_work_note':
+      'আগে খোলা কাজ সেভ করুন। কনফার্মের পর কিছুক্ষণের মধ্যে কাজ শুরু হবে।',
+  'confirm_shutdown': 'হ্যাঁ, বন্ধ করুন',
+  'confirm_restart': 'হ্যাঁ, রিস্টার্ট করুন',
+  'confirm_run_script': 'হ্যাঁ, স্ক্রিপ্ট চালান',
+  'confirm_default': 'নিশ্চিত করুন',
+  'cancel': 'বাতিল',
+  'expires_in': 'মেয়াদ বাকি: {n} সেকেন্ড',
+  'expired': 'মেয়াদ শেষ',
+  'confirmed_msg': 'নিশ্চিত করা হয়েছে',
+  'cancelled_msg': 'বাতিল করা হয়েছে',
+  // audit
+  'audit_title': 'কাজের লগ (শুধু দেখা যায়)',
+  'audit_empty': 'এখনো কোনো লগ নেই।',
+  // SMS help
+  'sms_title': 'ইন্টারনেট ছাড়া (SMS)',
+  'sms_intro':
+      'ইন্টারনেট বা Tailscale না থাকলে ল্যাপটপের গেটওয়ে ফোনে SMS পাঠিয়ে ছোট কমান্ড দিতে পারেন। প্রথমে STATUS দিয়ে পরীক্ষা করুন।',
+  'sms_format': 'ফরম্যাট: কমান্ড, স্পেস, পিন। যেমন: STATUS 1234',
+  'sms_number_label': 'গেটওয়ে ফোনের নম্বর',
+  'sms_number_hint': '+8801XXXXXXXXX',
+  'sms_number_invalid': 'নম্বর সঠিক নয়।',
+  'sms_command': 'কমান্ড',
+  'sms_open': 'SMS অ্যাপ খুলুন',
+  'sms_pin_note': 'পিন আপনি নিজে টাইপ করবেন। অ্যাপ পিন কোথাও জমা রাখে না।',
+  'sms_warn':
+      'সতর্কতা: SMS-এ পুরনো মেসেজ আবার পাঠানো ঠেকানো যায় না। পিন গোপন রাখুন।',
+  'sms_cannot_open': 'SMS অ্যাপ খোলা যায়নি।',
+  'c_STATUS': 'অবস্থা জানুন',
+  'c_LOCK': 'স্ক্রিন লক',
+  'c_SHUTDOWN': 'বন্ধ করুন',
+  'c_RESTART': 'রিস্টার্ট',
+  'c_CANCEL': 'বন্ধ/রিস্টার্ট বাতিল',
+  'c_STOP': 'জরুরি বন্ধ',
+  // settings
+  'language': 'ভাষা',
+  'theme': 'থিম',
+  'theme_system': 'ফোনের মতো',
+  'theme_light': 'আলো',
+  'theme_dark': 'অন্ধকার',
+  'unpair': 'এই ফোন সরান',
+  'unpair_confirm':
+      'এই ফোনের পেয়ারিং মুছবেন? ল্যাপটপ থেকেও পুরোপুরি বাতিল করতে সেখানে "revoke" কমান্ড চালান।',
+  'yes': 'হ্যাঁ',
+  'no': 'না',
+  // errors
+  'err_network':
+      'ল্যাপটপের সাথে যোগাযোগ হয়নি। ল্যাপটপ চালু আছে কিনা, এজেন্ট চলছে কিনা এবং দুই জায়গাতেই Tailscale চালু আছে কিনা দেখুন।',
+  'err_timeout':
+      'ল্যাপটপ সাড়া দিচ্ছে না (সময় শেষ)। একটু পরে আবার চেষ্টা করুন।',
+  'err_unauthorized':
+      'এই ফোনের অনুমতি নেই বা বাতিল হয়ে গেছে। আবার যুক্ত করুন।',
+  'err_forbidden': 'কোড বা নিশ্চিতকরণ ভুল, মেয়াদ শেষ, বা আগেই ব্যবহার হয়েছে।',
+  'err_notfound': 'এটি আর পাওয়া যাচ্ছে না (হয়তো মেয়াদ শেষ)।',
+  'err_invalid': 'পাঠানো তথ্য ঠিক নয়। লেখাটি ছোট করে আবার চেষ্টা করুন।',
+  'err_rate':
+      'অনেক বেশি অনুরোধ হয়েছে বা কিছুক্ষণের জন্য আটকানো হয়েছে। কিছুক্ষণ পরে চেষ্টা করুন।',
+  'err_unavailable': 'এই মুহূর্তে কাজটি করা যাচ্ছে না।',
+  'err_server': 'ল্যাপটপের এজেন্টে সমস্যা হয়েছে। লগ দেখুন।',
+  'err_bad':
+      'ল্যাপটপ থেকে অদ্ভুত উত্তর এসেছে। অ্যাপ ও এজেন্টের ভার্সন মিলিয়ে দেখুন।',
+  'err_unknown': 'কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।',
+};
+
+const Map<String, String> _en = {
+  'app_title': 'Cortex One',
+  'pair_title': 'Connect to your laptop',
+  'pair_help':
+      'On the laptop, open PowerShell and run:\npython -m agent.main pair\nEnter the 6-digit code below (valid 5 minutes, one use).',
+  'server_label': 'Laptop address (Tailscale IP)',
+  'server_hint': '100.x.y.z:8765',
+  'code_label': '6-digit code',
+  'pair_button': 'Connect',
+  'pairing': 'Connecting…',
+  'server_invalid': 'That address is not valid. Example: 100.64.1.2:8765',
+  'code_invalid': 'The code must be exactly 6 digits.',
+  'pair_privacy':
+      'The token is kept only in this phone\'s secure storage (Keystore).',
+  'nav_home': 'Home',
+  'nav_pending': 'Confirm',
+  'nav_audit': 'Log',
+  'nav_sms': 'SMS',
+  'emergency_stop': 'EMERGENCY STOP',
+  'emergency_sub': 'Stop everything that is running',
+  'emergency_done': 'Stopped',
+  'status_title': 'Laptop status',
+  'status_refresh': 'Refresh',
+  'cpu': 'CPU',
+  'ram': 'RAM',
+  'disk': 'Disk',
+  'battery': 'Battery',
+  'plugged': 'plugged in',
+  'on_battery': 'on battery',
+  'uptime': 'Up for',
+  'free': 'free',
+  'status_loading': 'Checking status…',
+  'hours_short': 'h',
+  'minutes_short': 'min',
+  'command_title': 'Give a command',
+  'command_hint': 'e.g. Show the PDF files in Downloads',
+  'send': 'Send',
+  'mic_start': 'Speak',
+  'mic_stop': 'Stop',
+  'listening': 'Listening…',
+  'voice_unavailable':
+      'Voice typing could not be started on this phone. Check the microphone permission and speech service.',
+  'voice_hint':
+      'When you finish speaking, fix the text if needed, then press "Send".',
+  'voice_lang': 'Voice language',
+  'steps': 'Steps',
+  'reply': 'Reply',
+  'task_running': 'Working…',
+  'task_stopped': 'Task stopped',
+  'task_timeout': 'This is taking long. Check the "Log" tab later.',
+  'waiting_confirm': 'Waiting for your confirmation. Nothing runs without it.',
+  'go_pending': 'Open',
+  'quick_title': 'Quick actions',
+  'q_lock': 'Lock screen',
+  'q_status': 'Status',
+  'q_downloads': 'Downloads files',
+  'q_apps': 'Open an app',
+  'no_downloads': 'The Downloads folder is not in the allowed list.',
+  'no_apps': 'No apps are approved.',
+  'items_count': '{n} item(s)',
+  'folder_label': 'folder',
+  'file_label': 'file',
+  'ok': 'OK',
+  'pending_title': 'Waiting for confirmation',
+  'pending_empty': 'Nothing is waiting right now.',
+  'pending_note':
+      'The AI cannot run these itself. Nothing happens unless you confirm.',
+  'act_shutdown': 'Shut down the laptop',
+  'act_restart': 'Restart the laptop',
+  'act_run_script': 'Run a script',
+  'act_other': 'Request',
+  'will_run': 'Exactly what will run:',
+  'script_label': 'Script',
+  'save_work_note':
+      'Save your open work first. It starts shortly after you confirm.',
+  'confirm_shutdown': 'Yes, shut down',
+  'confirm_restart': 'Yes, restart',
+  'confirm_run_script': 'Yes, run the script',
+  'confirm_default': 'Confirm',
+  'cancel': 'Cancel',
+  'expires_in': 'Expires in {n} s',
+  'expired': 'Expired',
+  'confirmed_msg': 'Confirmed',
+  'cancelled_msg': 'Cancelled',
+  'audit_title': 'Activity log (read-only)',
+  'audit_empty': 'No entries yet.',
+  'sms_title': 'Offline (SMS)',
+  'sms_intro':
+      'Without internet or Tailscale you can text short commands to the laptop\'s gateway phone. Test with STATUS first.',
+  'sms_format': 'Format: command, space, PIN. Example: STATUS 1234',
+  'sms_number_label': 'Gateway phone number',
+  'sms_number_hint': '+8801XXXXXXXXX',
+  'sms_number_invalid': 'That number is not valid.',
+  'sms_command': 'Command',
+  'sms_open': 'Open SMS app',
+  'sms_pin_note': 'You type the PIN yourself. This app never stores it.',
+  'sms_warn':
+      'Warning: SMS cannot stop an old message from being replayed. Keep the PIN secret.',
+  'sms_cannot_open': 'Could not open the SMS app.',
+  'c_STATUS': 'Get status',
+  'c_LOCK': 'Lock screen',
+  'c_SHUTDOWN': 'Shut down',
+  'c_RESTART': 'Restart',
+  'c_CANCEL': 'Cancel shutdown/restart',
+  'c_STOP': 'Emergency stop',
+  'language': 'Language',
+  'theme': 'Theme',
+  'theme_system': 'Like phone',
+  'theme_light': 'Light',
+  'theme_dark': 'Dark',
+  'unpair': 'Remove this phone',
+  'unpair_confirm':
+      'Remove pairing from this phone? To fully revoke it, also run "revoke" on the laptop.',
+  'yes': 'Yes',
+  'no': 'No',
+  'err_network':
+      'Could not reach the laptop. Check that it is on, the agent is running, and Tailscale is on for both.',
+  'err_timeout': 'The laptop is not answering (timed out). Try again shortly.',
+  'err_unauthorized':
+      'This phone is not authorised or was revoked. Pair it again.',
+  'err_forbidden':
+      'The code or confirmation is wrong, expired, or already used.',
+  'err_notfound': 'That is no longer available (it may have expired).',
+  'err_invalid':
+      'The request was not accepted. Shorten the text and try again.',
+  'err_rate':
+      'Too many requests, or temporarily blocked. Try again in a little while.',
+  'err_unavailable': 'This cannot be done right now.',
+  'err_server': 'The laptop agent had a problem. Check the log.',
+  'err_bad':
+      'The laptop sent an unexpected answer. Check app and agent versions match.',
+  'err_unknown': 'Something went wrong. Please try again.',
+};
