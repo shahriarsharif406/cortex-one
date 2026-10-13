@@ -18,7 +18,8 @@ def auth(client, engine):
 
 
 def test_health_open_but_minimal(client):
-    assert client.get("/health").json() == {"status": "ok"}
+    from agent import __version__
+    assert client.get("/health").json() == {"status": "ok", "version": __version__}
 
 
 def test_docs_and_schema_hidden(client):

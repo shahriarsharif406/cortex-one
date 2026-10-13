@@ -199,7 +199,8 @@ class ConfirmationStore:
 
     def __init__(self, ttl: float, now: Callable[[], float] = time.monotonic):
         self.ttl, self.now = ttl, now
-        self._pending: dict[str, tuple[float, str]] = {}
+        # token -> (expires_at, fingerprint, device_id, action, params, source)
+        self._pending: dict[str, tuple[float, str, int, str, dict[str, Any], str]] = {}
         self._lock = threading.Lock()
 
     @staticmethod
@@ -208,12 +209,14 @@ class ConfirmationStore:
                           ensure_ascii=False)
         return sha256_hex(blob)
 
-    def issue(self, device_id: int, action: str, params: dict[str, Any]) -> str:
+    def issue(self, device_id: int, action: str, params: dict[str, Any],
+              source: str = "http") -> str:
         token = secrets.token_urlsafe(16)
         with self._lock:
             self._purge()
             self._pending[token] = (
-                self.now() + self.ttl, self._fingerprint(device_id, action, params))
+                self.now() + self.ttl, self._fingerprint(device_id, action, params),
+                device_id, action, dict(params), source)
         return token
 
     def consume(self, token: str, device_id: int, action: str,
@@ -226,7 +229,36 @@ class ConfirmationStore:
         return hmac.compare_digest(
             entry[1], self._fingerprint(device_id, action, params))
 
+    # -- inspection, so the phone can show exactly what it is confirming ------
+    def list_pending(self, device_id: int, source: str) -> list[dict[str, Any]]:
+        """Pending requests of one device and source, soonest-expiring first."""
+        with self._lock:
+            self._purge()
+            t = self.now()
+            rows = [{"confirm_token": tok, "action": e[3], "params": dict(e[4]),
+                     "expires_in": max(0, round(e[0] - t))}
+                    for tok, e in self._pending.items() if e[2] == device_id and e[5] == source]
+        return sorted(rows, key=lambda r: r["expires_in"])
+
+    def peek(self, token: str, device_id: int, source: str) -> tuple[str, dict[str, Any]] | None:
+        """(action, params) of a live pending request owned by this device, else None."""
+        with self._lock:
+            self._purge()
+            e = self._pending.get(token)
+        if e is None or e[2] != device_id or e[5] != source:
+            return None
+        return e[3], dict(e[4])
+
+    def discard(self, token: str, device_id: int, source: str) -> bool:
+        with self._lock:
+            self._purge()
+            e = self._pending.get(token)
+            if e is None or e[2] != device_id or e[5] != source:
+                return False
+            del self._pending[token]
+            return True
+
     def _purge(self) -> None:
         t = self.now()
-        for token in [k for k, (exp, _) in self._pending.items() if exp < t]:
+        for token in [k for k, e in self._pending.items() if e[0] < t]:
             del self._pending[token]

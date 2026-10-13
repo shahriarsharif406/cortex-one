@@ -57,6 +57,16 @@ class AITaskResult:
     stopped_reason: str = ""
 
 
+@dataclass
+class AITask:
+    """A started task. ``result`` fills in live, so a poller can show progress."""
+    instruction: str
+    client: Any
+    device_id: int
+    actor: str
+    result: AITaskResult = field(default_factory=lambda: AITaskResult(ok=False, reply=""))
+
+
 def build_tools() -> list[dict[str, Any]]:
     tools = []
     for spec in REGISTRY.values():
@@ -125,6 +135,14 @@ class Orchestrator:
 
     # ------------------------------------------------------------------ run
     def run(self, instruction: str, device_id: int, device_name: str) -> AITaskResult:
+        return self.finish(self.begin(instruction, device_id, device_name))
+
+    def begin(self, instruction: str, device_id: int, device_name: str) -> "AITask":
+        """Validate, check the caps and take the single-task lock.
+
+        Raises AIUnavailable (safe message) when the task cannot start. A
+        successful ``begin`` MUST be followed by ``finish`` (it releases the lock).
+        """
         instruction = (instruction or "").strip()
         if not instruction:
             raise AIUnavailable("The instruction is empty.")
@@ -138,22 +156,25 @@ class Orchestrator:
         client = self._client or make_client(s.ai_timeout_seconds)
         if not self._busy.acquire(blocking=False):
             raise AIUnavailable("Another AI task is already running.")
-        actor = f"ai:{device_name}"
+        return AITask(instruction=instruction, client=client, device_id=device_id,
+                      actor=f"ai:{device_name}")
+
+    def finish(self, task: "AITask") -> AITaskResult:
         try:
-            result = self._loop(client, instruction, device_id, actor)
+            self._loop(task.client, task.instruction, task.device_id, task.actor, task.result)
         finally:
             self._busy.release()
-        self.engine.audit.log(actor, "ai", "ai_task", {"instruction": instruction[:200]},
+        result = task.result
+        self.engine.audit.log(task.actor, "ai", "ai_task", {"instruction": task.instruction[:200]},
                               "ok" if result.ok else "failed",
                               result.stopped_reason or f"{len(result.steps)} step(s)")
         return result
 
     def _loop(self, client: Any, instruction: str, device_id: int,
-              actor: str) -> AITaskResult:
+              actor: str, result: AITaskResult) -> AITaskResult:
         s = self.engine.settings
         tools = build_tools()
         messages: list[dict[str, Any]] = [{"role": "user", "content": instruction}]
-        result = AITaskResult(ok=False, reply="")
 
         for _ in range(s.ai_max_steps):
             if self.engine.ctx.stop_event.is_set():
@@ -230,7 +251,8 @@ class Orchestrator:
                 step.update(ok=False, message="script not approved")
                 result.steps.append(step)
                 return reply("That script is not approved.", is_error=True)
-            token = self.engine.confirmations.issue(device_id, name, _clean(params))
+            token = self.engine.confirmations.issue(device_id, name, _clean(params),
+                                                    source="ai")
             self.engine.audit.log(actor, "ai", name, params, "pending",
                                   "AI requested; awaiting owner confirmation")
             result.pending_confirmations.append({
