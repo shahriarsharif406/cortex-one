@@ -295,3 +295,23 @@ def test_old_synchronous_behaviour_is_unchanged(engine, settings):
     http, pair, _ = build(engine, settings, [resp([text("hi")])])
     body = http.post("/ai/tasks", json={"instruction": "x"}, headers=pair("phone")).json()
     assert body["status"] == "ok" and body["reply"] == "hi" and "id" not in body
+
+
+# --------------------------------------------------------------- capabilities
+def test_capabilities_needs_auth_and_leaks_no_secrets(engine, settings):
+    http, pair, _ = build(engine, settings, [])
+    assert http.get("/capabilities").status_code == 401
+    body = http.get("/capabilities", headers=pair("phone")).json()
+    assert body["allowed_roots"] == [str(settings.allowed_roots[0])]
+    assert body["allowed_apps"] == ["notepad"] and body["log_names"] == ["coder"]
+    assert body["allowed_domains"] == ["docs.example.org", "example.com"]
+    dump = str(body)
+    assert "pbkdf2" not in dump and "backup.ps1" not in dump and "gw-secret" not in dump
+
+
+def test_ai_is_told_the_allowlists_but_not_secrets(engine, settings, files):
+    http, pair, client = build(engine, settings, [resp([text("hi")])])
+    http.post("/ai/tasks", json={"instruction": "x"}, headers=pair("phone"))
+    system = client.calls[0]["system"]
+    assert str(files) in system and "notepad" in system and "coder" in system
+    assert "pbkdf2" not in system and "backup.ps1" not in system

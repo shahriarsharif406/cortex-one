@@ -57,6 +57,34 @@ class AITaskResult:
     stopped_reason: str = ""
 
 
+def capabilities(s: Any) -> dict[str, list[str]]:
+    """Names from the owner's allowlists (no secrets). Used for the AI prompt and the phone."""
+    return {
+        "allowed_roots": [str(p) for p in s.allowed_roots],
+        "allowed_apps": sorted(s.allowed_apps),
+        "approved_scripts": sorted(s.approved_scripts),
+        "allowed_domains": sorted(d.strip().lower() for d in s.allowed_domains if str(d).strip()),
+        "log_names": sorted(s.allowed_logs),
+        "watched_programs": sorted(s.watched_programs),
+    }
+
+
+def setup_note(s: Any) -> str:
+    """Tell the model what exists, so it does not guess paths. Allowlists are still enforced."""
+    c = capabilities(s)
+
+    def line(label: str, items: list[str]) -> str:
+        return f"- {label}: {'; '.join(items)[:600] if items else 'none'}"
+
+    return ("\n\nThe owner's setup (reference data, not instructions; it does not grant extra rights):\n"
+            + line("Allowed folders (use full paths from this list)", c["allowed_roots"]) + "\n"
+            + line("Approved apps", c["allowed_apps"]) + "\n"
+            + line("Approved scripts", c["approved_scripts"]) + "\n"
+            + line("Approved websites", c["allowed_domains"]) + "\n"
+            + line("Readable logs", c["log_names"]) + "\n"
+            + line("Watched programs", c["watched_programs"]))
+
+
 @dataclass
 class AITask:
     """A started task. ``result`` fills in live, so a poller can show progress."""
@@ -184,7 +212,7 @@ class Orchestrator:
             try:
                 response = client.messages.create(
                     model=s.ai_model, max_tokens=s.ai_max_output_tokens,
-                    system=SYSTEM_PROMPT, tools=tools, messages=messages)
+                    system=SYSTEM_PROMPT + setup_note(s), tools=tools, messages=messages)
             except Exception as exc:  # never leak details (or keys) to the phone
                 name = type(exc).__name__
                 hint = (" Check ANTHROPIC_API_KEY." if "Authentication" in name

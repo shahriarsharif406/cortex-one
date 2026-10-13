@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from . import __version__
 from .actions import REGISTRY
 from .ai import (MAX_INSTRUCTION_LEN, AIUnavailable, AITask, AITaskResult,
-                 Orchestrator)
+                 Orchestrator, capabilities)
 from .config import Settings
 from .engine import Engine
 from .security import Device, PairingLocked, RateLimiter, verify_secret
@@ -212,6 +212,11 @@ def create_app(settings: Settings | None = None,
         elif job.status == "error":
             out.update(status="error", reply=job.error, stopped_reason=job.error)
         return out
+
+    @app.get("/capabilities")
+    def get_capabilities(device: Device = Depends(current_device)) -> dict[str, list[str]]:
+        """What the owner allowed (names/paths only; never hashes, tokens or commands)."""
+        return capabilities(settings)
 
     @app.get("/ai/pending")
     def ai_pending(device: Device = Depends(current_device)) -> list[dict[str, Any]]:

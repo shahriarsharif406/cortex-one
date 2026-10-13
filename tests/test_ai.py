@@ -38,7 +38,8 @@ def test_request_uses_model_system_prompt_and_caps(engine):
     call = client.calls[0]
     assert call["model"] == engine.settings.ai_model
     assert call["max_tokens"] == engine.settings.ai_max_output_tokens
-    assert call["system"] == SYSTEM_PROMPT and "untrusted" in SYSTEM_PROMPT
+    assert call["system"].startswith(SYSTEM_PROMPT) and "untrusted" in SYSTEM_PROMPT
+    assert str(engine.settings.allowed_roots[0]) in call["system"]      # told where it may work
     assert call["tools"] == build_tools()
     assert call["messages"][0] == {"role": "user", "content": "do it"}
 
