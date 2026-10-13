@@ -17,6 +17,15 @@ Windows agent that a phone (or SMS) can command safely. Python 3.11+, FastAPI, S
 - API key: `ANTHROPIC_API_KEY` env var only. Never write it to config, logs, audit or error messages.
 - Tests use `tests/fake_anthropic.py` (scripted) and `tests/test_ai_sdk_roundtrip.py` (real SDK, mocked HTTP). Real API calls need the owner's key and are not part of the suite.
 
+## Phase 2 actions (all `risk="low"`, all in REGISTRY)
+- `system_info`, `list_processes` (names only, `limit` 1-25), `agent_watch` (only `watched_programs`): read-only, no command lines.
+- `take_screenshot`: no params; the agent picks the file name; folder `screenshots_dir` must pass `resolve_allowed()`; returns the name only, never uploads. Capture lives in `agent/screen.py` (ctypes GDI, no dependency); tests inject `Context.screenshotter`.
+- `open_url`: https only, host must equal an entry of `allowed_domains` (no sub-domain implied, no userinfo, no odd ports, ASCII only). Tests inject `Context.url_opener`. Only list domains you trust: the AI chooses the path/query.
+- `tail_log`: param is a short NAME from `allowed_logs`, never a path. Output is capped (200 lines, 8000 chars), stripped of control/ANSI characters, passed through `logging_setup.scrub`, and flagged untrusted.
+- `ActionSpec.optional` holds optional string params (parsed with `_int_param`, strict ranges). They are in the AI tool schema but not in `required`.
+- Every AI tool result is wrapped by `ai.wrap_untrusted()` (`<tool_output untrusted="true">`), capped before wrapping, and tags inside data are defanged. Do not remove this.
+- `doctor`, `init-config` are CLI-only. `serve` logs to `<data_dir>/logs/agent.log` (rotating, secrets scrubbed).
+
 ## Layout
 - `agent/security.py` pairing, token hashing, rate limit, lockout, confirmations
 - `agent/actions.py` the allowlist + `Context` (injectable `runner`/`launcher` for tests)

@@ -40,6 +40,13 @@ def settings(tmp_path, files) -> Settings:
     s.sms_allowed_numbers = ["+8801711111111"]
     s.sms_pin_hash = hash_secret("4821", iterations=1000)
     s.gateway_secret_hash = hash_secret("gw-secret", iterations=1000)
+    s.allowed_domains = ["example.com", "docs.example.org"]
+    s.screenshots_dir = files / "Screenshots"
+    log_dir = tmp_path / "outside-logs"          # logs need not live in allowed_roots
+    log_dir.mkdir()
+    (log_dir / "coder.log").write_text("line1\nline2\nline3\n", encoding="utf-8")
+    s.allowed_logs = {"coder": str(log_dir / "coder.log")}
+    s.watched_programs = ["claude", "node"]
     return s
 
 
@@ -54,8 +61,17 @@ def launched() -> list:
 
 
 @pytest.fixture
-def engine(settings, runner, launched) -> Engine:
+def opened() -> list:
+    return []
+
+
+@pytest.fixture
+def engine(settings, runner, launched, opened) -> Engine:
+    def fake_screenshot(path):
+        Path(path).write_bytes(b"\x89PNG\r\n\x1a\nfake")
+
     ctx = Context(settings=settings, runner=runner, system="Windows",
                   launcher=lambda cmd: launched.append(cmd),
-                  stop_event=threading.Event())
+                  stop_event=threading.Event(),
+                  screenshotter=fake_screenshot, url_opener=opened.append)
     return Engine(settings, ctx)

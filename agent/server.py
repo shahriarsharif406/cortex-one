@@ -83,7 +83,8 @@ def create_app(settings: Settings | None = None,
     @app.get("/actions")
     def list_actions(device: Device = Depends(current_device)) -> list[dict]:
         return [{"name": s.name, "description": s.description, "risk": s.risk,
-                 "params": list(s.params)} for s in REGISTRY.values()]
+                 "params": list(s.params), "optional": list(s.optional)}
+                for s in REGISTRY.values()]
 
     @app.post("/actions/{name}")
     def run_action(name: str, body: ActionRequest,
