@@ -1,0 +1,132 @@
+"""Command line: python -m agent.main <command>"""
+from __future__ import annotations
+
+import argparse
+import getpass
+import secrets
+import sys
+import time
+
+from .config import Settings
+from .engine import Engine
+from .security import hash_secret
+from .sms import normalize_number
+
+
+def cmd_serve(settings: Settings, _args) -> int:
+    import uvicorn
+
+    from .server import create_app
+
+    if settings.host == "0.0.0.0":
+        print("WARNING: host 0.0.0.0 exposes the agent on every network. "
+              "Prefer your Tailscale IP.", file=sys.stderr)
+    app = create_app(settings)
+    uvicorn.run(app, host=settings.host, port=settings.port, log_level="info")
+    return 0
+
+
+def cmd_pair(settings: Settings, _args) -> int:
+    code = Engine(settings).pairing.create_code()
+    print(f"Pairing code: {code}  (valid {settings.pairing_ttl_seconds // 60} min, one use)")
+    return 0
+
+
+def cmd_devices(settings: Settings, _args) -> int:
+    for d in Engine(settings).pairing.list_devices():
+        seen = (time.strftime("%Y-%m-%d %H:%M", time.localtime(d["last_seen"]))
+                if d["last_seen"] else "never")
+        flag = " (revoked)" if d["revoked"] else ""
+        print(f"{d['id']}: {d['name']}  last seen {seen}{flag}")
+    return 0
+
+
+def cmd_revoke(settings: Settings, args) -> int:
+    ok = Engine(settings).pairing.revoke(args.device_id)
+    print("Revoked." if ok else "No such device.")
+    return 0 if ok else 1
+
+
+def cmd_audit(settings: Settings, args) -> int:
+    for row in reversed(Engine(settings).audit.recent(args.limit)):
+        when = time.strftime("%m-%d %H:%M:%S", time.localtime(row["ts"]))
+        print(f"{when} {row['via']:<4} {row['actor']:<18} {row['action']:<16} "
+              f"{row['status']:<9} {row['detail']}")
+    return 0
+
+
+def cmd_ask(settings: Settings, args) -> int:
+    from .ai import AIUnavailable, Orchestrator
+
+    engine = Engine(settings)
+    try:
+        result = Orchestrator(engine).run(" ".join(args.instruction), 0, "cli")
+    except AIUnavailable as exc:
+        print(f"AI unavailable: {exc}", file=sys.stderr)
+        return 1
+    for step in result.steps:
+        mark = "ok " if step["ok"] else "ERR"
+        print(f"  [{mark}] {step['tool']} {step['input']} -> {step['message']}")
+    print(result.reply)
+    for p in result.pending_confirmations:
+        print(f"(waiting for phone confirmation: {p['action']})")
+    print(f"tokens used: {result.tokens_used}")
+    return 0 if result.ok else 2
+
+
+def cmd_ai_usage(settings: Settings, _args) -> int:
+    from .ai import Orchestrator
+
+    u = Orchestrator(Engine(settings)).usage_today()
+    print(f"Today: {u['total_tokens']} / {u['daily_cap']} tokens, {u['requests']} request(s)")
+    return 0
+
+
+def cmd_sms_setup(settings: Settings, args) -> int:
+    pin = getpass.getpass("Choose an SMS PIN (4-12 digits): ")
+    if not pin.isdigit() or not 4 <= len(pin) <= 12:
+        print("PIN must be 4-12 digits.", file=sys.stderr)
+        return 1
+    if pin != getpass.getpass("Repeat PIN: "):
+        print("PINs do not match.", file=sys.stderr)
+        return 1
+    settings.sms_pin_hash = hash_secret(pin)
+    numbers = {normalize_number(n) for n in args.numbers}
+    settings.sms_allowed_numbers = sorted(n for n in numbers if n)
+    secret = secrets.token_urlsafe(24)
+    settings.gateway_secret_hash = hash_secret(secret)
+    settings.save()
+    print("SMS control enabled for:", ", ".join(settings.sms_allowed_numbers))
+    print("\nGateway secret (shown ONCE, put it in the SMS gateway app as the "
+          "X-Gateway-Secret header):")
+    print(secret)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="cortex-one")
+    p.add_argument("--data-dir", help="override the data folder")
+    sub = p.add_subparsers(dest="command", required=True)
+    sub.add_parser("serve", help="start the agent").set_defaults(fn=cmd_serve)
+    sub.add_parser("pair", help="print a one-time pairing code").set_defaults(fn=cmd_pair)
+    sub.add_parser("devices", help="list paired phones").set_defaults(fn=cmd_devices)
+    r = sub.add_parser("revoke", help="revoke a phone")
+    r.add_argument("device_id", type=int)
+    r.set_defaults(fn=cmd_revoke)
+    a = sub.add_parser("audit", help="show recent actions")
+    a.add_argument("--limit", type=int, default=30)
+    a.set_defaults(fn=cmd_audit)
+    q = sub.add_parser("ask", help="give the AI operator an instruction (needs ANTHROPIC_API_KEY)")
+    q.add_argument("instruction", nargs="+")
+    q.set_defaults(fn=cmd_ask)
+    sub.add_parser("ai-usage", help="today's AI token use").set_defaults(fn=cmd_ai_usage)
+    s = sub.add_parser("sms-setup", help="enable SMS control")
+    s.add_argument("numbers", nargs="+", help="phone numbers allowed to command the laptop")
+    s.set_defaults(fn=cmd_sms_setup)
+    args = p.parse_args(argv)
+    settings = Settings.load(args.data_dir)
+    return args.fn(settings, args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
