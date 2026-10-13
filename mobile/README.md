@@ -1,16 +1,43 @@
-# cortex_one
+# Cortex One — phone app (Flutter, Android)
 
-Cortex One phone app
+Bangla-first (English toggle), light/dark. Talks only to your own laptop's agent
+over the Tailscale network. No analytics, no ads, no third-party trackers.
 
-## Getting Started
+## What it does
+- **Pairing**: laptop address + 6-digit code → device token kept only in the Android
+  Keystore (`flutter_secure_storage`). Never in plain preferences.
+- **Home**: laptop status card (`system_info`), command box (type or speak; the
+  recognised text is shown for editing and is never sent automatically), live steps and
+  reply, quick actions (lock, status, list Downloads, open approved apps).
+- **Emergency stop**: big red button on every tab, one tap, no confirmation.
+- **Confirmations**: shutdown / restart / run_script requested by the AI wait here. The
+  card shows exactly what will run and an expiry countdown. Nothing runs until you press
+  confirm.
+- **Log**: read-only audit list.
+- **SMS help**: command format and a button that opens the SMS app with the gateway
+  number and command prefilled. You type the PIN yourself; the app has no PIN field and
+  stores none.
 
-This project is a starting point for a Flutter application.
+## Privacy notes
+- Voice typing uses Android's own speech service (on most phones Google's). The audio is
+  handled by the phone's speech engine, not by this app or by your laptop.
+- The app allows plain `http` because the agent speaks http on Tailscale (already
+  WireGuard-encrypted). Only ever pair with your Tailscale address.
+- `android:allowBackup="false"`: the token is not included in Android backups.
 
-A few resources to get you started if this is your first Flutter project:
+## Build (on a PC with Flutter + Android SDK)
+```powershell
+cd mobile
+flutter pub get
+flutter analyze
+flutter test
+flutter build apk --release      # build\app\outputs\flutter-apk\app-release.apk
+```
+`android/gradle.properties` limits Gradle to 1.5 GB so it fits a 4 GB laptop. Close other
+programs while building. The first build downloads Gradle and SDK parts and is slow.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Layout
+`lib/api` HTTP client + models · `lib/state` app state, pending controller ·
+`lib/screens` UI · `lib/l10n/strings.dart` Bangla + English text ·
+`lib/storage` secure store + plain prefs · `lib/voice` speech wrapper ·
+`test/` widget tests with a fake API client (`test/support/fakes.dart`).

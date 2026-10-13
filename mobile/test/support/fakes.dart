@@ -49,8 +49,9 @@ class FakeApi implements CortexApi {
   ]) async {
     calls.add('action:$name');
     actionParams.add(params);
-    if (name == 'system_info')
+    if (name == 'system_info') {
       return ActionOutcome(ok: true, message: 'ok', data: info);
+    }
     if (name == 'list_files') {
       return const ActionOutcome(
         ok: true,
