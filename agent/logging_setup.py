@@ -37,9 +37,10 @@ def setup_logging(settings: Settings) -> logging.Handler:
         backupCount=settings.log_backups, encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     handler.addFilter(RedactingFilter())
-    for name in ("", "uvicorn", "uvicorn.error", "uvicorn.access", "cortex"):
-        lg = logging.getLogger(name)
-        lg.handlers = [h for h in lg.handlers if not isinstance(h, RotatingFileHandler)]
-        lg.addHandler(handler)
-        lg.setLevel(logging.INFO)
+    # Root only: uvicorn and "cortex" loggers propagate to it (log_config=None),
+    # so attaching to the children as well would write every line several times.
+    root = logging.getLogger()
+    root.handlers = [h for h in root.handlers if not isinstance(h, RotatingFileHandler)]
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
     return handler

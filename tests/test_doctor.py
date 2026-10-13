@@ -116,10 +116,11 @@ def test_file_logging_rotates_and_redacts(settings):
             log.info("line %d padding padding padding padding", i)
         handler.flush()
     finally:
-        for name in ("", "uvicorn", "uvicorn.error", "uvicorn.access", "cortex"):
-            logging.getLogger(name).removeHandler(handler)
+        logging.getLogger().removeHandler(handler)
         handler.close()
     files_ = sorted(p.name for p in settings.logs_dir.iterdir())
+    everything = "".join((settings.logs_dir / n).read_text(encoding="utf-8") for n in files_)
+    assert everything.count("line 199 ") <= 1   # never duplicated across handlers
     assert "agent.log" in files_ and "agent.log.1" in files_
     assert all("SUPERSECRETTOKEN" not in (settings.logs_dir / n).read_text(encoding="utf-8")
                for n in files_)
