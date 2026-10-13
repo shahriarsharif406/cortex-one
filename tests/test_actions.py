@@ -78,7 +78,10 @@ def test_symlink_escape_denied(engine, files, tmp_path):
     outside.mkdir()
     (outside / "passwords.txt").write_text("x")
     link = files / "link"
-    link.symlink_to(outside, target_is_directory=True)
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("creating symlinks needs Developer Mode or admin rights on Windows")
     assert not run(engine, "list_files", {"path": str(link)}).ok
     assert not run(engine, "copy_file", {
         "src": str(link / "passwords.txt"), "dst": str(files / "stolen.txt")}).ok

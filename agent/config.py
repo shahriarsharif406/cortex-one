@@ -62,6 +62,15 @@ class Settings:
     ai_daily_token_cap: int = 200_000
     ai_requests_per_minute: int = 6
     ai_timeout_seconds: float = 30.0
+    # Phase 2 allowlists. Empty means the capability is off.
+    allowed_domains: list[str] = field(default_factory=list)      # open_url
+    allowed_logs: dict[str, str] = field(default_factory=dict)    # tail_log: short name -> file
+    watched_programs: list[str] = field(default_factory=list)     # agent_watch: e.g. ["claude", "node"]
+    # take_screenshot saves here; it must be inside allowed_roots.
+    screenshots_dir: Path = field(
+        default_factory=lambda: Path.home() / "Documents" / "CortexOne-Screenshots")
+    log_max_bytes: int = 1_000_000
+    log_backups: int = 3
 
     @property
     def db_path(self) -> Path:
@@ -81,14 +90,21 @@ class Settings:
                     continue
                 if key == "allowed_roots":
                     value = [Path(p) for p in value]
+                elif key == "screenshots_dir":
+                    value = Path(value)
                 setattr(s, key, value)
         return s
+
+    @property
+    def logs_dir(self) -> Path:
+        return self.data_dir / "logs"
 
     def save(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         raw = asdict(self)
         raw.pop("data_dir")
         raw["allowed_roots"] = [str(p) for p in self.allowed_roots]
+        raw["screenshots_dir"] = str(self.screenshots_dir)
         self.config_path.write_text(
             json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8"
         )

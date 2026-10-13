@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import logging
 import secrets
 import sys
 import time
@@ -18,11 +19,42 @@ def cmd_serve(settings: Settings, _args) -> int:
 
     from .server import create_app
 
+    from .logging_setup import setup_logging
+
+    setup_logging(settings)
     if settings.host == "0.0.0.0":
-        print("WARNING: host 0.0.0.0 exposes the agent on every network. "
-              "Prefer your Tailscale IP.", file=sys.stderr)
+        msg = ("WARNING: host 0.0.0.0 exposes the agent on every network. "
+               "Prefer your Tailscale IP.")
+        logging.getLogger("cortex").warning(msg)
+        if sys.stderr:
+            print(msg, file=sys.stderr)
     app = create_app(settings)
-    uvicorn.run(app, host=settings.host, port=settings.port, log_level="info")
+    # log_config=None keeps the rotating, redacting file handler we installed.
+    uvicorn.run(app, host=settings.host, port=settings.port, log_config=None,
+                log_level="info")
+    return 0
+
+
+def cmd_doctor(settings: Settings, _args) -> int:
+    from .doctor import FAIL, format_report, run_checks
+
+    checks = run_checks(settings)
+    print(format_report(checks))
+    return 1 if any(c.level == FAIL for c in checks) else 0
+
+
+def cmd_init_config(settings: Settings, _args) -> int:
+    if settings.config_path.exists():
+        print(f"config.json আগে থেকেই আছে, কিছু বদলানো হয়নি / config.json already exists, "
+              f"left untouched: {settings.config_path}")
+        return 0
+    # Fresh defaults for this Windows user: Downloads/Documents, notepad/
+    # calculator/explorer, no scripts, nothing network-facing beyond loopback.
+    fresh = Settings(data_dir=settings.data_dir)
+    fresh.save()
+    print(f"config.json তৈরি হয়েছে / created: {fresh.config_path}")
+    print("allowed_roots:", ", ".join(str(p) for p in fresh.allowed_roots))
+    print("allowed_apps:", ", ".join(fresh.allowed_apps))
     return 0
 
 
@@ -120,10 +152,16 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("instruction", nargs="+")
     q.set_defaults(fn=cmd_ask)
     sub.add_parser("ai-usage", help="today's AI token use").set_defaults(fn=cmd_ai_usage)
+    sub.add_parser("doctor", help="check the setup").set_defaults(fn=cmd_doctor)
+    sub.add_parser("init-config", help="write a default config.json if none exists"
+                   ).set_defaults(fn=cmd_init_config)
     s = sub.add_parser("sms-setup", help="enable SMS control")
     s.add_argument("numbers", nargs="+", help="phone numbers allowed to command the laptop")
     s.set_defaults(fn=cmd_sms_setup)
     args = p.parse_args(argv)
+    for stream in (sys.stdout, sys.stderr):  # Bangla output on legacy Windows consoles
+        if stream is not None and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     settings = Settings.load(args.data_dir)
     return args.fn(settings, args)
 
