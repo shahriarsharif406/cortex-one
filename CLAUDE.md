@@ -1,6 +1,6 @@
 # Cortex One — project rules for Claude Code
 
-Windows agent that a phone (or SMS) can command safely. Python 3.11+, FastAPI, SQLite.
+Windows agent that a phone (or SMS) can command safely. Python 3.10+ (developed and tested on Windows 10 / Python 3.10), FastAPI, SQLite. Phone app: Flutter in `mobile/`. Keep the agent light (4 GB laptop): no heavy dependencies.
 
 ## Non-negotiable safety rules
 - NEVER add an action that accepts a free-form shell command or arbitrary path. Every capability is a named entry in `agent/actions.py::REGISTRY`.
@@ -26,17 +26,32 @@ Windows agent that a phone (or SMS) can command safely. Python 3.11+, FastAPI, S
 - Every AI tool result is wrapped by `ai.wrap_untrusted()` (`<tool_output untrusted="true">`), capped before wrapping, and tags inside data are defanged. Do not remove this.
 - `doctor`, `init-config` are CLI-only. `serve` logs to `<data_dir>/logs/agent.log` (rotating, secrets scrubbed).
 
+## Phone API rules (agent/server.py)
+- `/ai/pending`, `/ai/confirm`, `/ai/cancel` only see confirmations issued with `source="ai"` for the SAME device. `ConfirmationStore.peek/discard/list_pending` enforce device + source; `consume()` re-checks the (device, action, params) fingerprint and makes the token single use. Do not add a path that runs a high-risk action without `consume()`.
+- `POST /ai/tasks` with `wait:false` runs the task in a background thread (`Orchestrator.begin` takes the single-task lock first, so cap/key/busy errors are 503 at POST time). Jobs are private to their device.
+- CORS stays off (no `CORSMiddleware`); a test checks it. `/health` returns `{"status","version"}` only.
+- `/capabilities` exposes names/paths of allowlists only; never hashes, tokens or script command lines. The same data (`ai.capabilities`) is added to the AI system prompt.
+
+## Phone app rules (mobile/)
+- Token + server address only in `flutter_secure_storage` (`SecretStore`). Plain prefs (`PrefsStore`) hold language, theme and the SMS gateway number only. The SMS PIN is never typed into, stored in, or logged by the app.
+- Emergency stop is visible on every tab, one tap, no confirmation. Confirm cards show the exact command for `run_script` and a countdown, and never auto-confirm.
+- No analytics or third-party trackers. Errors shown to the user are Bangla/English strings from `lib/l10n/strings.dart` (a test keeps both languages in sync).
+- Widget tests use `test/support/fakes.dart` (FakeApi). Run `flutter analyze` and `flutter test` in `mobile/`.
+
 ## Layout
 - `agent/security.py` pairing, token hashing, rate limit, lockout, confirmations
 - `agent/actions.py` the allowlist + `Context` (injectable `runner`/`launcher` for tests)
 - `agent/engine.py` single place that validates, runs and audits actions
 - `agent/ai.py` AI task operator (tool-use loop, budgets, pending confirmations)
 - `agent/server.py` HTTP API, `agent/sms.py` SMS fallback, `agent/main.py` CLI
+- `agent/doctor.py` setup check, `agent/logging_setup.py` rotating redacted logs, `agent/screen.py` screenshot (ctypes)
+- `scripts/*.ps1` run-agent and per-user startup task (support `-WhatIf`); `mobile/` Flutter app
 
 ## Testing
 - `python -m pytest` must stay green. New action => tests for success, denial and bad params.
 - Tests use a `FakeRunner`; never execute real shutdown/lock in tests.
 - After touching a security check, mutate it (disable it) and confirm a test fails.
+- New action ⇒ it automatically becomes an AI tool: add AI abuse tests (`tests/test_ai_phase2.py` style: injection, oversized output, path escape) and check `risk="high"` ones only create a pending confirmation.
 
 ## Roadmap
-See `README.md` (what exists) and `NEEDS_ME.md` (what only the owner can do). Next: Flutter app, then Phase 4 app/browser automation (new actions go into REGISTRY with tests, and become AI tools automatically).
+See `README.md` (what exists) and `NEEDS_ME.md` (what only the owner can do). Volume/media keys and browser/Office automation are intentionally out of scope. New actions go into REGISTRY with tests and become AI tools automatically.
