@@ -121,23 +121,48 @@ def cmd_ai_usage(settings: Settings, _args) -> int:
 
 
 def cmd_sms_setup(settings: Settings, args) -> int:
-    pin = getpass.getpass("Choose an SMS PIN (4-12 digits): ")
-    if not pin.isdigit() or not 4 <= len(pin) <= 12:
-        print("PIN must be 4-12 digits.", file=sys.stderr)
-        return 1
-    if pin != getpass.getpass("Repeat PIN: "):
-        print("PINs do not match.", file=sys.stderr)
-        return 1
-    settings.sms_pin_hash = hash_secret(pin)
+    from . import totp
+
     numbers = {normalize_number(n) for n in args.numbers}
+    if args.totp:
+        secret = totp.new_secret()
+        try:
+            how = totp.save_secret(settings.data_dir, secret)
+        except OSError as exc:
+            print(f"Could not store the TOTP secret ({type(exc).__name__}).", file=sys.stderr)
+            return 1
+        settings.sms_mode = "totp"
+        settings.sms_pin_hash = ""          # the static PIN stops working
+        if how != "dpapi":
+            print("WARNING: not on Windows, so the secret is stored in a file with "
+                  "permissions 600 (not encrypted).", file=sys.stderr)
+    else:
+        pin = getpass.getpass("Choose an SMS PIN (4-12 digits): ")
+        if not pin.isdigit() or not 4 <= len(pin) <= 12:
+            print("PIN must be 4-12 digits.", file=sys.stderr)
+            return 1
+        if pin != getpass.getpass("Repeat PIN: "):
+            print("PINs do not match.", file=sys.stderr)
+            return 1
+        settings.sms_pin_hash = hash_secret(pin)
+        settings.sms_mode = "pin"
+        totp.delete_secret(settings.data_dir)
+        secret = ""
     settings.sms_allowed_numbers = sorted(n for n in numbers if n)
-    secret = secrets.token_urlsafe(24)
-    settings.gateway_secret_hash = hash_secret(secret)
+    gateway = secrets.token_urlsafe(24)
+    settings.gateway_secret_hash = hash_secret(gateway)
     settings.save()
     print("SMS control enabled for:", ", ".join(settings.sms_allowed_numbers))
     print("\nGateway secret (shown ONCE, put it in the SMS gateway app as the "
           "X-Gateway-Secret header):")
-    print(secret)
+    print(gateway)
+    if args.totp:
+        print("\nTOTP secret (shown ONCE, never saved in readable form). Add it to an "
+              "authenticator app as a time-based key, 6 digits, 30 s:")
+        print(secret)
+        print("SMS format: SHUTDOWN 482913  (the 6-digit code from the app, used once)")
+    else:
+        print("\nNote: PIN mode has no replay protection. Prefer: sms-setup --totp")
     return 0
 
 
@@ -163,6 +188,8 @@ def main(argv: list[str] | None = None) -> int:
                    ).set_defaults(fn=cmd_init_config)
     s = sub.add_parser("sms-setup", help="enable SMS control")
     s.add_argument("numbers", nargs="+", help="phone numbers allowed to command the laptop")
+    s.add_argument("--totp", action="store_true",
+                   help="use one-time authenticator codes instead of a static PIN")
     s.set_defaults(fn=cmd_sms_setup)
     args = p.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):  # Bangla output on legacy Windows consoles

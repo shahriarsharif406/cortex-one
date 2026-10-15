@@ -1,15 +1,23 @@
-"""Offline fallback: control the laptop by SMS (e.g. ``SHUTDOWN 4821``).
+"""Offline fallback: control the laptop by SMS (e.g. ``SHUTDOWN 482913``).
 
 An old Android phone with a SIM acts as the SMS gateway and forwards each
 incoming SMS to ``POST /sms/inbound``. Safety layers: sender must be on the
-allowlist, the PIN must match (salted hash), repeated wrong PINs lock the
-sender out, and only a small set of low-blast-radius commands exist.
+allowlist, the code must match, repeated wrong codes lock the sender out, and
+only a small set of low-blast-radius commands exist.
+
+Two modes (``sms_mode``):
+- ``pin`` (default): a static PIN. It has NO replay protection: anyone who
+  captures one SMS can resend it.
+- ``totp``: a 6-digit one-time code from an authenticator app (RFC 6238).
+  Each 30 s step works once, so a captured message is useless afterwards.
 """
 from __future__ import annotations
 
 import re
+import time
 from typing import Callable
 
+from . import totp
 from .engine import Engine
 from .security import LockoutTracker, verify_secret
 
@@ -56,12 +64,18 @@ def _mask(number: str) -> str:
 
 class SmsHandler:
     def __init__(self, engine: Engine,
-                 lockout_now: Callable[[], float] | None = None):
+                 lockout_now: Callable[[], float] | None = None,
+                 now: Callable[[], float] | None = None):
         self.engine = engine
         s = engine.settings
         kwargs = {"now": lockout_now} if lockout_now else {}
         self.lockout = LockoutTracker(s.sms_max_failures, s.sms_lockout_seconds,
                                       **kwargs)
+        self.replay = totp.ReplayGuard(engine.db)
+        self.now = now or time.time
+
+    def _secret(self) -> str | None:
+        return totp.load_secret(self.engine.settings.data_dir)
 
     def handle(self, sender: str, text: str) -> str | None:
         """Process one SMS. Returns a short reply, or None to stay silent."""
@@ -70,7 +84,10 @@ class SmsHandler:
         actor = _mask(number)
         allowed = {normalize_number(n) for n in s.sms_allowed_numbers}
 
-        if not s.sms_pin_hash or number not in allowed:
+        mode = "totp" if s.sms_mode == "totp" else "pin"
+        secret = self._secret() if mode == "totp" else None
+        enabled = bool(secret) if mode == "totp" else bool(s.sms_pin_hash)
+        if not enabled or number not in allowed:
             # Unknown sender or SMS disabled: log, never reply (no oracle).
             self.engine.audit.log(actor, "sms", "-", {}, "rejected", "sender not allowed")
             return None
@@ -83,11 +100,16 @@ class SmsHandler:
             self.engine.audit.log(actor, "sms", "-", {}, "rejected", "bad format")
             return "Format: COMMAND PIN. Commands: " + ", ".join(COMMANDS)
         command, pin = parsed
-        if not verify_secret(pin, s.sms_pin_hash):
+        if mode == "totp":
+            good = totp.verify_and_claim(secret, pin, self.replay, self.now())
+            why, reply = "wrong, expired or reused code", "Wrong code."
+        else:
+            good = verify_secret(pin, s.sms_pin_hash)
+            why, reply = "wrong pin", "Wrong PIN."
+        if not good:
             self.lockout.record_failure(number)
-            self.engine.audit.log(actor, "sms", COMMANDS[command], {}, "rejected",
-                                  "wrong pin")
-            return "Wrong PIN."
+            self.engine.audit.log(actor, "sms", COMMANDS[command], {}, "rejected", why)
+            return reply
         self.lockout.reset(number)
 
         result = self.engine.run(COMMANDS[command], {}, actor=actor, via="sms")
