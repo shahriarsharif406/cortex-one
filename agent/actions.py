@@ -280,6 +280,13 @@ def _int_param(params: dict[str, Any], key: str, default: int, lo: int, hi: int)
     return value
 
 
+def _clamp_int(value: Any, default: int, lo: int, hi: int) -> int:
+    """A config number, forced into a safe range (bad types fall back to default)."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return default
+    return max(lo, min(value, hi))
+
+
 def _printable(text: object, limit: int = 80) -> str:
     """Names that come from the machine are untrusted: strip control chars."""
     return _CONTROL.sub("", _ANSI.sub("", str(text)))[:limit]
@@ -372,6 +379,9 @@ def take_screenshot(ctx: Context, params: dict[str, Any]) -> ActionResult:
     ctx.require_windows()
     folder = resolve_allowed(str(ctx.settings.screenshots_dir), ctx.settings.allowed_roots)
     folder.mkdir(parents=True, exist_ok=True)
+    from .screenshots import prune
+    keep = _clamp_int(ctx.settings.screenshot_keep, 20, 1, MAX_SCREENSHOTS - 1)
+    prune(folder, keep - 1)  # room for the new one
     if sum(1 for _ in folder.glob("screenshot-*.png")) >= MAX_SCREENSHOTS:
         raise ActionError("The screenshots folder is full. Free some space; nothing is auto-deleted.")
     stamp = time.strftime("screenshot-%Y%m%d-%H%M%S")
@@ -387,6 +397,7 @@ def take_screenshot(ctx: Context, params: dict[str, Any]) -> ActionResult:
         grab(path)
     except OSError as exc:
         raise ActionError(f"Screenshot failed: {_printable(exc, 120)}")
+    prune(folder, keep)
     return ActionResult(True, "Screenshot saved.", {"file": path.name, "folder": str(folder)})
 
 

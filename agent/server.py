@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from . import __version__
+from . import __version__, screenshots
 from .actions import REGISTRY
 from .ai import (MAX_INSTRUCTION_LEN, AIUnavailable, AITask, AITaskResult,
                  Orchestrator, capabilities)
@@ -254,6 +254,30 @@ def create_app(settings: Settings | None = None,
     @app.get("/ai/usage")
     def ai_usage(device: Device = Depends(current_device)) -> dict[str, int]:
         return ai.usage_today()
+
+    @app.get("/screenshots")
+    def screenshots_list(device: Device = Depends(current_device)) -> dict[str, Any]:
+        """Names of the agent's own screenshots, newest first (view-only)."""
+        try:
+            return {"files": screenshots.list_screenshots(settings),
+                    "compression": screenshots.pillow_available()}
+        except screenshots.ScreenshotError as exc:
+            raise HTTPException(exc.status, exc.message)
+
+    @app.get("/screenshots/{name}")
+    def screenshot_file(name: str, width: int | None = None, quality: int = 60,
+                        device: Device = Depends(current_device)) -> Response:
+        try:
+            data, mime = screenshots.load_screenshot(settings, name, width, quality)
+        except screenshots.ScreenshotError as exc:
+            raise HTTPException(exc.status, exc.message)
+        except OSError:
+            raise HTTPException(404, "No such screenshot.")
+        engine.audit.log(f"device:{device.name}", "http", "view_screenshot", {}, "ok",
+                         f"{len(data)} bytes")
+        return Response(content=data, media_type=mime,
+                        headers={"Cache-Control": "no-store",
+                                 "X-Content-Type-Options": "nosniff"})
 
     @app.get("/audit")
     def audit(limit: int = 50,

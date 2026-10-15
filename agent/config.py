@@ -71,6 +71,23 @@ class Settings:
         default_factory=lambda: Path.home() / "Documents" / "CortexOne-Screenshots")
     log_max_bytes: int = 1_000_000
     log_backups: int = 3
+    # Screenshots: the newest N are kept, older agent-made ones are deleted.
+    screenshot_keep: int = 20
+    # Power-cut / battery watcher (psutil battery data only; idle on desktops).
+    power_watch: bool = True
+    power_warn_percent: int = 30
+    power_critical_percent: int = 10
+    power_check_seconds: int = 30
+    # Optional push. "" = off. "ntfy" (target = topic) or "webhook" (target = https URL).
+    # Prefer the CORTEX_NOTIFY_TARGET environment variable over notifier_target:
+    # an ntfy topic works like a password for who may read/post to it.
+    notifier_type: str = ""
+    notifier_target: str = ""
+    # What the watcher may do at critical battery on battery power:
+    # "none" | "hibernate" | "lock". Never "shutdown".
+    critical_action: str = "none"
+    # SMS authentication: "pin" (static PIN, no replay protection) or "totp".
+    sms_mode: str = "pin"
 
     @property
     def db_path(self) -> Path:
