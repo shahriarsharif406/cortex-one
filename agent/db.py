@@ -36,6 +36,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
     status TEXT NOT NULL,
     detail TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    kind TEXT NOT NULL,
+    battery_percent INTEGER,
+    plugged INTEGER,
+    message TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS kv (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 

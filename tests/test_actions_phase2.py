@@ -143,10 +143,14 @@ def test_screenshot_failure_is_a_clean_error(engine):
 def test_screenshot_folder_cap(engine, settings, monkeypatch):
     import agent.actions as actions
     monkeypatch.setattr(actions, "MAX_SCREENSHOTS", 2)
-    run(engine, "take_screenshot")
-    run(engine, "take_screenshot")
+    # Our own screenshots are auto-pruned (screenshot_keep), so they never fill the
+    # folder. Files we did not name (and so never delete) still count toward the cap.
+    settings.screenshots_dir.mkdir(parents=True)
+    for i in range(2):
+        (settings.screenshots_dir / f"screenshot-mine-{i}.png").write_bytes(b"x")
     r = run(engine, "take_screenshot")
     assert not r.ok and "full" in r.message
+    assert len(list(settings.screenshots_dir.glob("screenshot-mine-*.png"))) == 2
 
 
 def test_png_encoder_makes_a_valid_png():

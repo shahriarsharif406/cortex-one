@@ -28,7 +28,13 @@ def cmd_serve(settings: Settings, _args) -> int:
         logging.getLogger("cortex").warning(msg)
         if sys.stderr:
             print(msg, file=sys.stderr)
-    app = create_app(settings)
+    engine = Engine(settings)
+    if settings.power_watch:
+        from .notify import Notifier
+        from .power import PowerWatcher
+
+        PowerWatcher(engine, notifier=Notifier.from_settings(settings)).start()
+    app = create_app(settings, engine)
     # log_config=None keeps the rotating, redacting file handler we installed.
     uvicorn.run(app, host=settings.host, port=settings.port, log_config=None,
                 log_level="info")

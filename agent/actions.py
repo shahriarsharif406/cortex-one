@@ -164,6 +164,12 @@ def restart(ctx: Context, params: dict[str, Any]) -> ActionResult:
     return ActionResult(code == 0, msg, {"delay_seconds": delay})
 
 
+def hibernate(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    ctx.require_windows()
+    code, out = ctx.run(["shutdown", "/h"], 10)
+    return ActionResult(code == 0, "Hibernating." if code == 0 else f"Hibernate failed: {out}")
+
+
 def cancel_shutdown(ctx: Context, params: dict[str, Any]) -> ActionResult:
     ctx.require_windows()
     code, out = ctx.run(["shutdown", "/a"], 10)
@@ -501,6 +507,10 @@ REGISTRY: dict[str, ActionSpec] = {s.name: s for s in [
     ActionSpec("lock", "Lock the screen", "low", lock),
     ActionSpec("shutdown", "Shut down after a short delay", "high", shutdown),
     ActionSpec("restart", "Restart after a short delay", "high", restart),
+    # High risk everywhere (HTTP, AI, SMS-less). The ONE exception is the battery
+    # watcher at critical charge: see Engine.run_power_action and CLAUDE.md.
+    ActionSpec("hibernate", "Hibernate the laptop (saves the session, then powers down)",
+               "high", hibernate),
     ActionSpec("cancel_shutdown", "Cancel a pending shutdown/restart", "low",
                cancel_shutdown),
     ActionSpec("emergency_stop", "Kill running tasks and cancel shutdown", "low",

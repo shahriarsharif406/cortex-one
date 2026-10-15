@@ -9,6 +9,7 @@ from .actions import (REGISTRY, ActionError, ActionResult, Context,
 from .audit import AuditLog
 from .config import Settings
 from .db import Database
+from .power import AlertStore, critical_threshold
 from .security import ConfirmationStore, PairingManager, RateLimiter
 
 
@@ -21,10 +22,42 @@ class Engine:
         self.ctx = context or Context(settings=settings)
         self.limiter = RateLimiter(settings.requests_per_minute)
         self.confirmations = ConfirmationStore(settings.confirm_ttl_seconds)
+        self.alerts = AlertStore(self.db)
+
+    # Channels that only trusted in-process code may use. HTTP, SMS, the AI and
+    # the CLI pass their own fixed ``via``, so a client can never reach this.
+    RESERVED_VIA = frozenset({"watcher"})
+    WATCHER_ACTIONS = frozenset({"hibernate", "lock"})
 
     def run(self, action: str, params: dict[str, Any], actor: str,
             via: str) -> ActionResult:
         """Execute an allowlisted action. Never raises for expected errors."""
+        if via in self.RESERVED_VIA:
+            self.audit.log(actor, via, action, params, "rejected", "reserved channel")
+            return ActionResult(False, "Not allowed.")
+        return self._execute(action, params, actor, via)
+
+    def run_power_action(self, battery_percent: float | None,
+                         plugged: bool | None) -> ActionResult | None:
+        """The battery watcher's single escape hatch around the confirmation.
+
+        Runs ``settings.critical_action`` (hibernate or lock, never shutdown)
+        and ONLY when every condition is re-checked here: the configured action
+        is on the short WATCHER_ACTIONS list, the laptop is on battery
+        (``plugged is False``, not unknown) and the charge is at or below the
+        critical threshold. Anything else returns None and does nothing.
+        """
+        action = (self.settings.critical_action or "none").strip().lower()
+        if action not in self.WATCHER_ACTIONS:
+            return None
+        if plugged is not False or not isinstance(battery_percent, (int, float)):
+            return None
+        if battery_percent > critical_threshold(self.settings):
+            return None
+        return self._execute(action, {}, "watcher", "watcher")
+
+    def _execute(self, action: str, params: dict[str, Any], actor: str,
+                 via: str) -> ActionResult:
         spec = REGISTRY.get(action)
         if spec is None:
             self.audit.log(actor, via, action, params, "rejected", "unknown action")

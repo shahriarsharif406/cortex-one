@@ -55,3 +55,10 @@ Windows agent that a phone (or SMS) can command safely. Python 3.10+ (developed 
 
 ## Roadmap
 See `README.md` (what exists) and `NEEDS_ME.md` (what only the owner can do). Volume/media keys and browser/Office automation are intentionally out of scope. New actions go into REGISTRY with tests and become AI tools automatically.
+
+## Power watcher & the one confirmation exception (agent/power.py, Engine.run_power_action)
+- `serve` starts a daemon thread (`power_watch`, psutil battery only; idle on desktops). Events (`ac_lost`, `ac_restored`, `battery_warn`, `battery_critical`) go to the `alerts` table + audit and `GET /alerts`; optional push through `agent/notify.py` (ntfy topic or https webhook, off by default, message = event + battery % + time, target never logged in full, failures swallowed).
+- `hibernate` is `risk="high"` in REGISTRY: over HTTP it needs the two-step confirmation, and the AI can only request it.
+- THE exception: at the transition to critical battery, `Engine.run_power_action` may run `settings.critical_action` (`hibernate` or `lock` only; `shutdown`, anything else, or `none` does nothing) without a token. It re-checks inside the Engine: action in `WATCHER_ACTIONS`, `plugged is False` (unknown does not count), percent <= `power_critical_percent`. It fires once per episode (hysteresis) and is audited with `via="watcher"`.
+- `via="watcher"` is a reserved channel: `Engine.run` refuses it, and HTTP/SMS/AI/CLI each pass their own fixed `via`, so no client can name it. Do not add any path that forwards a caller-chosen `via`, and never extend `WATCHER_ACTIONS` with a destructive action.
+- Tests: `tests/test_power.py` (mutate the three checks + the reserved channel and see it fail).

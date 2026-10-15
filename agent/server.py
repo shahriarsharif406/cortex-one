@@ -106,6 +106,8 @@ def create_app(settings: Settings | None = None,
             return {"summary": f"Shut down the laptop in {settings.shutdown_delay_seconds} seconds"}
         if action == "restart":
             return {"summary": f"Restart the laptop in {settings.shutdown_delay_seconds} seconds"}
+        if action == "hibernate":
+            return {"summary": "Hibernate the laptop now"}
         return {"summary": REGISTRY[action].description if action in REGISTRY else action}
 
     @app.get("/health")
@@ -278,6 +280,11 @@ def create_app(settings: Settings | None = None,
         return Response(content=data, media_type=mime,
                         headers={"Cache-Control": "no-store",
                                  "X-Content-Type-Options": "nosniff"})
+
+    @app.get("/alerts")
+    def alerts(limit: int = 20, device: Device = Depends(current_device)) -> list[dict]:
+        """Recent power / battery alerts from the watcher (read-only)."""
+        return engine.alerts.recent(limit)
 
     @app.get("/audit")
     def audit(limit: int = 50,
