@@ -17,6 +17,9 @@ class CortexApp extends StatelessWidget {
       child: ListenableBuilder(
         listenable: state,
         builder: (context, _) => MaterialApp(
+          // A new key per API object drops any pushed screens (e.g. alerts) when
+          // the phone is unpaired, so a revoked token never leaves one open.
+          key: ValueKey(state.api),
           title: 'Cortex One',
           debugShowCheckedModeBanner: false,
           locale: Locale(state.lang),

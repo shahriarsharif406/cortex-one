@@ -6,6 +6,7 @@ import '../api/api_client.dart';
 import '../api/models.dart';
 import '../state/app_state.dart';
 import '../state/pending_controller.dart';
+import 'alerts_screen.dart';
 
 class HomeTab extends StatefulWidget {
   const HomeTab({
@@ -32,6 +33,7 @@ class _HomeTabState extends State<HomeTab> {
   Map<String, dynamic>? _info;
   Object? _infoError;
   bool _infoLoading = false;
+  AlertEntry? _alert; // newest power alert; a banner while it is a problem
 
   TaskStatus? _task;
   bool _running = false;
@@ -49,6 +51,20 @@ class _HomeTabState extends State<HomeTab> {
     _loadStatus();
   }
 
+  /// Best effort: an older agent without /alerts must not break the home tab.
+  Future<void> _loadAlert() async {
+    try {
+      final rows = await widget.api.alerts(limit: 1);
+      if (!_disposed) setState(() => _alert = rows.isEmpty ? null : rows.first);
+    } catch (_) {
+      if (!_disposed) setState(() => _alert = null);
+    }
+  }
+
+  void _openAlerts() => Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => AlertsScreen(api: widget.api)),
+  );
+
   @override
   void dispose() {
     _disposed = true;
@@ -58,6 +74,7 @@ class _HomeTabState extends State<HomeTab> {
 
   // ------------------------------------------------------------------ status
   Future<void> _loadStatus() async {
+    _loadAlert();
     final app = AppScope.read(context);
     setState(() {
       _infoLoading = true;
@@ -278,6 +295,29 @@ class _HomeTabState extends State<HomeTab> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (_alert != null &&
+              _alert!.isProblem &&
+              DateTime.now().difference(_alert!.time) < const Duration(hours: 12))
+            Card(
+              key: const Key('power_banner'),
+              color: scheme.errorContainer,
+              child: ListTile(
+                leading: const Icon(Icons.bolt),
+                title: Text(alertText(s, _alert!)),
+                subtitle: Text(s.t('alert_banner_hint')),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _openAlerts,
+              ),
+            ),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton.icon(
+              key: const Key('alerts_open'),
+              onPressed: _openAlerts,
+              icon: const Icon(Icons.bolt_outlined),
+              label: Text(s.t('alerts_open')),
+            ),
+          ),
           _statusCard(context),
           const SizedBox(height: 16),
           Text(

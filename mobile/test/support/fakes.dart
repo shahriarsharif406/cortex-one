@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui' show Size;
 
 import 'package:cortex_one/api/api_client.dart';
@@ -34,6 +35,12 @@ class FakeApi implements CortexApi {
   List<TaskStatus> taskPolls = [];
   Object? taskError;
   List<AuditEntry> auditRows = [];
+  List<AlertEntry> alertRows = [];
+  Object? alertsError;
+  Object? screenshotError;
+  Object? screenshotActionError;
+  Uint8List screenshotPng = _tinyPng;
+  int shotCounter = 0;
 
   @override
   Future<String> pair(String code, String deviceName) async {
@@ -51,6 +58,15 @@ class FakeApi implements CortexApi {
     actionParams.add(params);
     if (name == 'system_info') {
       return ActionOutcome(ok: true, message: 'ok', data: info);
+    }
+    if (name == 'take_screenshot') {
+      if (screenshotActionError != null) throw screenshotActionError!;
+      shotCounter++;
+      return ActionOutcome(
+        ok: true,
+        message: 'Screenshot saved.',
+        data: {'file': 'screenshot-20260101-10000$shotCounter.png'},
+      );
     }
     if (name == 'list_files') {
       return const ActionOutcome(
@@ -123,6 +139,23 @@ class FakeApi implements CortexApi {
 
   @override
   Future<Capabilities> capabilities() async => caps;
+
+  @override
+  Future<List<AlertEntry>> alerts({int limit = 20}) async {
+    calls.add('alerts');
+    if (alertsError != null) throw alertsError!;
+    return List.of(alertRows);
+  }
+
+  @override
+  Future<List<ScreenshotInfo>> screenshots() async => const [];
+
+  @override
+  Future<Uint8List> screenshotBytes(String name, {int? width}) async {
+    calls.add('shot:$name:${width ?? 0}');
+    if (screenshotError != null) throw screenshotError!;
+    return screenshotPng;
+  }
 }
 
 class FakeVoice implements VoiceInput {
@@ -201,3 +234,8 @@ Future<void> flush(WidgetTester tester, [int turns = 6]) async {
     await tester.pump(const Duration(milliseconds: 50));
   }
 }
+
+/// A valid 1x1 PNG, so Image.memory can really decode it in widget tests.
+final Uint8List _tinyPng = Uint8List.fromList(const [
+  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x50, 0x58, 0x30, 0x01, 0x00, 0x02, 0x34, 0x01, 0x51, 0x9A, 0x95, 0xC7, 0xF3, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+]);

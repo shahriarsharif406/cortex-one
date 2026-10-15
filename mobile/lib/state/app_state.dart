@@ -11,7 +11,10 @@ Future<bool> _defaultLaunch(Uri uri) =>
 
 /// Thrown by [AppState.pair] when the typed address is not usable.
 class InvalidServerAddress implements Exception {
-  const InvalidServerAddress();
+  const InvalidServerAddress([this.messageKey = 'server_invalid']);
+
+  /// Which string explains it: not an address at all, or not a private one.
+  final String messageKey;
 }
 
 class AppState extends ChangeNotifier {
@@ -65,7 +68,24 @@ class AppState extends ChangeNotifier {
   /// Exchanges the pairing code for a token and stores it in the secure store.
   Future<void> pair(String serverText, String code) async {
     final base = normalizeServerAddress(serverText);
-    if (base == null) throw const InvalidServerAddress();
+    if (base == null) {
+      final looksPublicHttp = RegExp(r'^http://', caseSensitive: false)
+              .hasMatch(serverText.trim()) ||
+          !serverText.contains('://');
+      final plain = serverText.trim().replaceFirst(
+        RegExp(r'^[a-zA-Z]+://'),
+        '',
+      );
+      final host = plain.split(RegExp(r'[:/]')).first;
+      throw InvalidServerAddress(
+        looksPublicHttp &&
+                RegExp(r'^[A-Za-z0-9.-]+$').hasMatch(host) &&
+                host.contains('.') &&
+                !isPrivateOrTailscaleHost(host)
+            ? 'server_not_private'
+            : 'server_invalid',
+      );
+    }
     final token = await apiFactory(base, null).pair(code, 'phone');
     await secrets.write(_kToken, token);
     await secrets.write(_kServer, base);

@@ -8,9 +8,10 @@ import '../widgets/settings_menu.dart';
 import 'audit_screen.dart';
 import 'home_tab.dart';
 import 'pending_screen.dart';
+import 'screen_view.dart';
 import 'sms_help_screen.dart';
 
-/// Main screen: four tabs and the emergency stop, which is always on screen.
+/// Main screen: five tabs and the emergency stop, which is always on screen.
 class HomeShell extends StatefulWidget {
   const HomeShell({
     super.key,
@@ -66,6 +67,8 @@ class _HomeShellState extends State<HomeShell> {
           // Audit reloads each time its tab is opened.
           _index == 2 ? AuditScreen(api: widget.api) : const SizedBox.shrink(),
           const SmsHelpScreen(),
+          // The viewer keeps its picture and timer only while its tab is open.
+          _index == 4 ? ScreenView(api: widget.api) : const SizedBox.shrink(),
         ],
       ),
       bottomNavigationBar: Column(
@@ -94,6 +97,10 @@ class _HomeShellState extends State<HomeShell> {
               NavigationDestination(
                 icon: const Icon(Icons.sms_outlined),
                 label: s.t('nav_sms'),
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.monitor_outlined),
+                label: s.t('nav_screen'),
               ),
             ],
           ),

@@ -34,10 +34,10 @@ class _PairingScreenState extends State<PairingScreen> {
     });
     try {
       await app.pair(_server.text, _code.text.trim());
-    } on InvalidServerAddress {
-      if (mounted) setState(() => _error = app.s.t('server_invalid'));
+    } on InvalidServerAddress catch (e) {
+      if (mounted) setState(() => _error = app.s.t(e.messageKey));
     } catch (e) {
-      if (mounted) setState(() => _error = app.s.error(e));
+      if (mounted) setState(() => _error = app.s.pairError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

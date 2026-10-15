@@ -41,6 +41,30 @@ class S {
     return t('err_unknown');
   }
 
+  /// Errors while pairing, where the likely cause differs from later requests.
+  String pairError(Object e) {
+    if (e is ApiException) {
+      switch (e.kind) {
+        case ApiErrorKind.network:
+        case ApiErrorKind.timeout:
+          return t('err_pair_offline');
+        case ApiErrorKind.notFound:
+        case ApiErrorKind.badResponse:
+        case ApiErrorKind.server:
+          return t('err_pair_wrong_address');
+        case ApiErrorKind.forbidden:
+          return t('err_pair_code');
+        case ApiErrorKind.rateLimited:
+          return t('err_pair_locked');
+        case ApiErrorKind.invalid:
+          return t('code_invalid');
+        default:
+          break;
+      }
+    }
+    return error(e);
+  }
+
   static List<String> get keys => _bn.keys.toList();
   static Set<String> get bnKeys => _bn.keys.toSet();
   static Set<String> get enKeys => _en.keys.toSet();
@@ -175,7 +199,7 @@ const Map<String, String> _bn = {
   'err_timeout':
       'ল্যাপটপ সাড়া দিচ্ছে না (সময় শেষ)। একটু পরে আবার চেষ্টা করুন।',
   'err_unauthorized':
-      'এই ফোনের অনুমতি নেই বা বাতিল হয়ে গেছে। আবার যুক্ত করুন।',
+      'এই ফোনের অনুমতি নেই, মেয়াদ শেষ বা বাতিল হয়ে গেছে। আবার যুক্ত করুন।',
   'err_forbidden': 'কোড বা নিশ্চিতকরণ ভুল, মেয়াদ শেষ, বা আগেই ব্যবহার হয়েছে।',
   'err_notfound': 'এটি আর পাওয়া যাচ্ছে না (হয়তো মেয়াদ শেষ)।',
   'err_invalid': 'পাঠানো তথ্য ঠিক নয়। লেখাটি ছোট করে আবার চেষ্টা করুন।',
@@ -186,6 +210,42 @@ const Map<String, String> _bn = {
   'err_bad':
       'ল্যাপটপ থেকে অদ্ভুত উত্তর এসেছে। অ্যাপ ও এজেন্টের ভার্সন মিলিয়ে দেখুন।',
   'err_unknown': 'কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।',
+  // screen viewer
+  'nav_screen': 'স্ক্রিন',
+  'screen_title': 'ল্যাপটপের স্ক্রিন (শুধু দেখা)',
+  'screen_refresh': 'রিফ্রেশ',
+  'screen_taking': 'স্ক্রিনশট নেওয়া হচ্ছে…',
+  'screen_empty': 'এখনো কোনো ছবি নেই। "রিফ্রেশ" চাপুন।',
+  'screen_auto': 'নিজে নিজে রিফ্রেশ',
+  'screen_auto_every': 'প্রতি',
+  'screen_seconds': 'সেকেন্ড',
+  'screen_data_note':
+      'প্রতিবার একটি ছোট ছবি ডাউনলোড হয় (সাধারণত ২০০–৮০০ KB)। অটো-রিফ্রেশ চালু থাকলে মোবাইল ডেটা খরচ হবে; Wi-Fi ছাড়া দরকার না হলে বন্ধ রাখুন।',
+  'screen_view_only': 'শুধু দেখা যায়; স্পর্শ বা কন্ট্রোল নেই। দুই আঙুলে জুম করুন।',
+  'screen_taken_at': 'তোলা হয়েছে',
+  'screen_compressed': 'ছোট করা ছবি (দ্রুত)',
+  'screen_original': 'আসল ছবি (Pillow নেই)',
+  // alerts
+  'alerts_title': 'বিদ্যুৎ ও ব্যাটারি সতর্কতা',
+  'alerts_empty': 'এখনো কোনো সতর্কতা নেই।',
+  'alerts_open': 'সতর্কতা দেখুন',
+  'alert_ac_lost': 'কারেন্ট গেছে, ব্যাটারিতে চলছে',
+  'alert_ac_restored': 'কারেন্ট ফিরেছে, চার্জ হচ্ছে',
+  'alert_battery_warn': 'ব্যাটারি কমে গেছে',
+  'alert_battery_critical': 'ব্যাটারি খুবই কম',
+  'alert_critical_action': 'ব্যাটারি শেষের দিকে: নিরাপত্তা-পদক্ষেপ নেওয়া হয়েছে',
+  'alert_banner_hint': 'ল্যাপটপ কারেন্ট ছাড়া চলছে বা ব্যাটারি কম।',
+  // clearer connection errors
+  'server_not_private':
+      'শুধু নিজের নেটওয়ার্কের ঠিকানা (Tailscale 100.x, 192.168.x, 10.x) বা https চলবে। পাবলিক ঠিকানায় http নয়।',
+  'err_pair_wrong_address':
+      'এই ঠিকানায় Cortex One এজেন্ট পাওয়া যায়নি। IP ও পোর্ট (ডিফল্ট 8765) আবার দেখুন; ল্যাপটপে `tailscale ip -4` চালান।',
+  'err_pair_offline':
+      'ল্যাপটপ পর্যন্ত পৌঁছানো যায়নি। ঠিকানা ঠিক আছে কিনা, ল্যাপটপ চালু ও এজেন্ট চলছে কিনা, আর দুই জায়গাতেই Tailscale চালু কিনা দেখুন।',
+  'err_pair_code':
+      'পেয়ারিং কোড ভুল বা মেয়াদ শেষ। ল্যাপটপে আবার `python -m agent.main pair` চালিয়ে নতুন কোড নিন।',
+  'err_pair_locked':
+      'ভুল কোড বেশি বার দেওয়ায় পেয়ারিং ৫ মিনিটের জন্য আটকানো। একটু পরে নতুন কোড নিয়ে চেষ্টা করুন।',
 };
 
 const Map<String, String> _en = {
@@ -307,7 +367,7 @@ const Map<String, String> _en = {
       'Could not reach the laptop. Check that it is on, the agent is running, and Tailscale is on for both.',
   'err_timeout': 'The laptop is not answering (timed out). Try again shortly.',
   'err_unauthorized':
-      'This phone is not authorised or was revoked. Pair it again.',
+      'This phone is not authorised, or its permission expired or was revoked. Pair it again.',
   'err_forbidden':
       'The code or confirmation is wrong, expired, or already used.',
   'err_notfound': 'That is no longer available (it may have expired).',
@@ -320,4 +380,40 @@ const Map<String, String> _en = {
   'err_bad':
       'The laptop sent an unexpected answer. Check app and agent versions match.',
   'err_unknown': 'Something went wrong. Please try again.',
+  // screen viewer
+  'nav_screen': 'Screen',
+  'screen_title': 'Laptop screen (view only)',
+  'screen_refresh': 'Refresh',
+  'screen_taking': 'Taking a screenshot…',
+  'screen_empty': 'No picture yet. Tap "Refresh".',
+  'screen_auto': 'Auto-refresh',
+  'screen_auto_every': 'Every',
+  'screen_seconds': 'seconds',
+  'screen_data_note':
+      'Each refresh downloads one small picture (usually 200–800 KB). With auto-refresh on this uses mobile data; keep it off away from Wi-Fi unless you need it.',
+  'screen_view_only': 'View only; no touch or control. Pinch with two fingers to zoom.',
+  'screen_taken_at': 'Taken at',
+  'screen_compressed': 'Compressed picture (fast)',
+  'screen_original': 'Original picture (Pillow not installed)',
+  // alerts
+  'alerts_title': 'Power & battery alerts',
+  'alerts_empty': 'No alerts yet.',
+  'alerts_open': 'See alerts',
+  'alert_ac_lost': 'Power cut: running on battery',
+  'alert_ac_restored': 'Power is back: charging',
+  'alert_battery_warn': 'Battery is getting low',
+  'alert_battery_critical': 'Battery is critically low',
+  'alert_critical_action': 'Battery nearly empty: a safety step was taken',
+  'alert_banner_hint': 'The laptop is off mains power or the battery is low.',
+  // clearer connection errors
+  'server_not_private':
+      'Only addresses on your own network (Tailscale 100.x, 192.168.x, 10.x) or https are accepted. No plain http to public addresses.',
+  'err_pair_wrong_address':
+      'No Cortex One agent answered at this address. Check the IP and port (default 8765); run `tailscale ip -4` on the laptop.',
+  'err_pair_offline':
+      'Could not reach the laptop. Check the address, that the laptop is on and the agent is running, and that Tailscale is on for both.',
+  'err_pair_code':
+      'The pairing code is wrong or expired. Run `python -m agent.main pair` on the laptop again for a fresh code.',
+  'err_pair_locked':
+      'Too many wrong codes, so pairing is blocked for 5 minutes. Wait a little, then try with a new code.',
 };

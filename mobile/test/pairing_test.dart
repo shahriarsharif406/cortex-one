@@ -87,10 +87,7 @@ void main() {
     await h.pump(tester);
     await fillAndSubmit(tester);
     expect(find.byKey(const Key('pair_error')), findsOneWidget);
-    expect(
-      find.text('কোড বা নিশ্চিতকরণ ভুল, মেয়াদ শেষ, বা আগেই ব্যবহার হয়েছে।'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('পেয়ারিং কোড ভুল বা মেয়াদ শেষ'), findsOneWidget);
     expect(h.secrets.values, isEmpty);
     expect(find.byKey(const Key('pair_button')), findsOneWidget);
   });
@@ -102,7 +99,7 @@ void main() {
     h.api.pairError = const ApiException(ApiErrorKind.network);
     await h.pump(tester);
     await fillAndSubmit(tester);
-    expect(find.textContaining('ল্যাপটপের সাথে যোগাযোগ হয়নি'), findsOneWidget);
+    expect(find.textContaining('ল্যাপটপ পর্যন্ত পৌঁছানো যায়নি'), findsOneWidget);
     expect(find.textContaining('Tailscale'), findsWidgets);
   });
 
@@ -114,7 +111,7 @@ void main() {
     );
     await h.pump(tester);
     await fillAndSubmit(tester);
-    expect(find.textContaining('অনেক বেশি অনুরোধ'), findsOneWidget);
+    expect(find.textContaining('পেয়ারিং ৫ মিনিটের জন্য আটকানো'), findsOneWidget);
   });
 
   testWidgets('language toggle switches the pairing screen to English', (

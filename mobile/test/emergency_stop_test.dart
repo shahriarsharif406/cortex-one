@@ -19,7 +19,7 @@ void main() {
   testWidgets('it stays visible on every tab', (tester) async {
     final h = Harness();
     await h.pump(tester);
-    for (final tab in [1, 2, 3, 0]) {
+    for (final tab in [1, 2, 3, 4, 0]) {
       await tester.tap(find.byType(NavigationDestination).at(tab));
       await tester.pump();
       await tester.pump();

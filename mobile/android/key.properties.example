@@ -1,0 +1,9 @@
+# Copy to key.properties (same folder) and fill in. key.properties is gitignored:
+# never commit it, never paste it into chat. Create the keystore with the
+# keytool command in NEEDS_ME.md, and keep a backup of the .jks somewhere safe;
+# if you lose it you cannot update the installed app.
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=cortexone
+# Absolute path, forward slashes or doubled backslashes:
+storeFile=D:/keys/cortexone-release.jks

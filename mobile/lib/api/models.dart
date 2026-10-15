@@ -166,3 +166,63 @@ class Capabilities {
     ],
   );
 }
+
+/// One power / battery alert from the laptop's watcher (GET /alerts).
+class AlertEntry {
+  const AlertEntry({
+    required this.id,
+    required this.time,
+    required this.kind,
+    required this.message,
+    this.batteryPercent,
+    this.plugged,
+  });
+
+  final int id;
+  final DateTime time;
+
+  /// ac_lost | ac_restored | battery_warn | battery_critical | critical_action
+  final String kind;
+  final String message;
+  final int? batteryPercent;
+  final bool? plugged;
+
+  /// Power is out or the battery is low right now (as of this alert).
+  bool get isProblem =>
+      kind == 'ac_lost' ||
+      kind == 'battery_warn' ||
+      kind == 'battery_critical' ||
+      kind == 'critical_action';
+
+  factory AlertEntry.fromJson(Map<String, dynamic> j) => AlertEntry(
+    id: (j['id'] as num?)?.toInt() ?? 0,
+    time: DateTime.fromMillisecondsSinceEpoch(
+      (((j['ts'] as num?) ?? 0) * 1000).round(),
+    ),
+    kind: (j['kind'] ?? '').toString(),
+    message: (j['message'] ?? '').toString(),
+    batteryPercent: (j['battery_percent'] as num?)?.toInt(),
+    plugged: j['plugged'] is bool ? j['plugged'] as bool : null,
+  );
+}
+
+/// A screenshot file the agent took (GET /screenshots).
+class ScreenshotInfo {
+  const ScreenshotInfo({
+    required this.name,
+    required this.size,
+    required this.modified,
+  });
+
+  final String name;
+  final int size;
+  final DateTime modified;
+
+  factory ScreenshotInfo.fromJson(Map<String, dynamic> j) => ScreenshotInfo(
+    name: (j['name'] ?? '').toString(),
+    size: (j['size'] as num?)?.toInt() ?? 0,
+    modified: DateTime.fromMillisecondsSinceEpoch(
+      (((j['modified'] as num?) ?? 0) * 1000).round(),
+    ),
+  );
+}

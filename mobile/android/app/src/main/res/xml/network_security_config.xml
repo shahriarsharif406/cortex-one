@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Why this does not list the Tailscale / private ranges:
+  Android's network security config can only name hosts, never IP ranges
+  (100.64.0.0/10, 192.168.0.0/16 ...). The laptop is reached by its Tailscale IP,
+  so cleartext has to stay permitted here, and the range restriction is enforced
+  in the app instead: lib/api/api_client.dart `isPrivateOrTailscaleHost`
+  refuses plain http to anything that is not loopback, a private LAN range,
+  100.64.0.0/10 or *.ts.net (https is allowed anywhere), and has tests.
+  What this file does add: https is trusted only through the system CA store,
+  so a certificate installed by a user or an app cannot be used to intercept it.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>
