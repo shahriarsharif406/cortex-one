@@ -62,3 +62,12 @@ See `README.md` (what exists) and `NEEDS_ME.md` (what only the owner can do). Vo
 - THE exception: at the transition to critical battery, `Engine.run_power_action` may run `settings.critical_action` (`hibernate` or `lock` only; `shutdown`, anything else, or `none` does nothing) without a token. It re-checks inside the Engine: action in `WATCHER_ACTIONS`, `plugged is False` (unknown does not count), percent <= `power_critical_percent`. It fires once per episode (hysteresis) and is audited with `via="watcher"`.
 - `via="watcher"` is a reserved channel: `Engine.run` refuses it, and HTTP/SMS/AI/CLI each pass their own fixed `via`, so no client can name it. Do not add any path that forwards a caller-chosen `via`, and never extend `WATCHER_ACTIONS` with a destructive action.
 - Tests: `tests/test_power.py` (mutate the three checks + the reserved channel and see it fail).
+
+## v0.4 additions (rules to keep)
+- Screenshots: `/screenshots*` serve only names matching `screenshots.NAME_RE` (fullmatch), regular non-link files in `screenshots_dir`, and only real PNG/JPEG bytes (415 otherwise). `copy_file`/`make_folder` may not target `screenshots_dir` (it would turn the screenshot endpoint into a file reader). `take_screenshot` prunes to `screenshot_keep`.
+- `resolve_allowed` also rejects alternate data streams (`:`) and DOS device names (`NUL`, `COM1.txt`). `find_files` prunes sub-folders that resolve outside the roots (NTFS junctions).
+- SMS: `sms_mode` is `pin` (no replay protection, doctor warns) or `totp` (`agent/totp.py`: RFC 6238, ±1 step, last step stored atomically in the `kv` table, secret DPAPI-encrypted, never in config/log/audit). Unknown `sms_mode` = SMS off; never fall back to the PIN.
+- Unauthenticated endpoints (`/pair`, `/sms/inbound`) lock out per client address before doing expensive work; the audit table is a rolling window (`audit.MAX_ROWS`). High-risk HTTP params are validated before a confirmation is issued; pending confirmations are capped per device.
+- `Engine.run` refuses high-risk actions on `via="ai"` as a second layer behind `ai.py`.
+- Phone app: plain http only to Tailscale (100.64/10, `*.ts.net`), loopback and the emulator host (`isPrivateOrTailscaleHost`); release builds need `android/key.properties`.
+- After a security review round, mutation-check: path confinement, confirmation requirement, AI high-risk block, emergency_stop exclusion, screenshot name/type/copy guards, TOTP replay guard, watcher restrictions.
