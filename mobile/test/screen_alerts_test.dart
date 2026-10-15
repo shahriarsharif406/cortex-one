@@ -247,7 +247,7 @@ void main() {
     testWidgets('a public http address is refused before any request', (tester) async {
       final h = Harness(paired: false);
       await submit(tester, h, server: 'http://example.com');
-      expect(find.textContaining('শুধু নিজের নেটওয়ার্কের ঠিকানা'), findsOneWidget);
+      expect(find.textContaining('http শুধু Tailscale ঠিকানায়'), findsOneWidget);
       expect(h.api.calls, isEmpty);
     });
 
@@ -274,17 +274,18 @@ void main() {
   });
 
   group('host guard', () {
-    test('plain http only on private, tailscale and loopback hosts', () {
+    test('plain http only on tailscale, loopback and emulator hosts', () {
       for (final ok in [
-        '100.64.0.1', '100.127.255.254', '10.1.2.3', '192.168.0.9',
-        '172.16.0.1', '172.31.9.9', '127.0.0.1', 'localhost', 'pc.tail1.ts.net',
+        '100.64.0.1', '100.127.255.254', '127.0.0.1', 'localhost',
+        'pc.tail1.ts.net', '10.0.2.2',
       ]) {
         expect(isPrivateOrTailscaleHost(ok), isTrue, reason: ok);
       }
       for (final bad in [
         '8.8.8.8', '100.63.0.1', '100.128.0.1', '172.15.0.1', '172.32.0.1',
         '192.169.0.1', '11.0.0.1', 'example.com', 'ts.net.evil.com',
-        '300.1.1.1', '10.0.0',
+        '300.1.1.1', '10.0.0', '10.1.2.3', '192.168.0.9', '172.16.0.1',
+        '172.31.9.9', '10.0.2.3',
       ]) {
         expect(isPrivateOrTailscaleHost(bad), isFalse, reason: bad);
       }

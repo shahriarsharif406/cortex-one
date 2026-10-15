@@ -116,13 +116,21 @@ class PairingLocked(Exception):
     """Too many failed pairing attempts."""
 
 
+class TooManyPending(Exception):
+    """A device already has the maximum number of unanswered confirmations."""
+
+
 class PairingManager:
     def __init__(self, db: Database, settings: Settings,
                  now: Callable[[], float] = time.time,
                  lockout_now: Callable[[], float] = time.monotonic):
         self.db, self.settings, self.now = db, settings, now
+        # One tracker per client address, so a stranger cannot lock the owner out; a
+        # much higher global ceiling still stops a spread-out guessing campaign.
         self.lockout = LockoutTracker(
             settings.max_pair_failures, settings.pair_lockout_seconds, lockout_now)
+        self.global_lockout = LockoutTracker(
+            settings.max_pair_failures * 10, settings.pair_lockout_seconds, lockout_now)
 
     def create_code(self) -> str:
         """Create a one-time 6-digit code. Older unused codes are discarded."""
@@ -135,9 +143,10 @@ class PairingManager:
             )
         return code
 
-    def pair(self, code: str, device_name: str) -> str | None:
+    def pair(self, code: str, device_name: str, client: str = "") -> str | None:
         """Exchange a valid code for a device token, or return None."""
-        if self.lockout.is_locked("pairing"):
+        key = f"pairing:{client}"
+        if self.lockout.is_locked(key) or self.global_lockout.is_locked("pairing"):
             raise PairingLocked()
         name = (device_name or "").strip()[:60] or "phone"
         ok = False
@@ -147,12 +156,13 @@ class PairingManager:
             ).fetchone()
             if (row and not row["used"] and row["expires_at"] >= self.now()
                     and hmac.compare_digest(row["code_hash"], sha256_hex(str(code)))):
-                ok = True
-                c.execute("UPDATE pairing_codes SET used = 1")
+                # single use even under a race: only one UPDATE can flip used 0 -> 1
+                ok = c.execute("UPDATE pairing_codes SET used = 1 WHERE used = 0").rowcount == 1
         if not ok:
-            self.lockout.record_failure("pairing")
+            self.lockout.record_failure(key)
+            self.global_lockout.record_failure("pairing")
             return None
-        self.lockout.reset("pairing")
+        self.lockout.reset(key)
         token = secrets.token_urlsafe(32)
         with self.db.conn() as c:
             c.execute(
@@ -209,11 +219,16 @@ class ConfirmationStore:
                           ensure_ascii=False)
         return sha256_hex(blob)
 
+    MAX_PENDING_PER_DEVICE = 10
+
     def issue(self, device_id: int, action: str, params: dict[str, Any],
               source: str = "http") -> str:
         token = secrets.token_urlsafe(16)
         with self._lock:
             self._purge()
+            if sum(1 for e in self._pending.values() if e[2] == device_id) \
+                    >= self.MAX_PENDING_PER_DEVICE:
+                raise TooManyPending()
             self._pending[token] = (
                 self.now() + self.ttl, self._fingerprint(device_id, action, params),
                 device_id, action, dict(params), source)

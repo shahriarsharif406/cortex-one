@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 log = logging.getLogger("cortex.notify")
 
 NTFY_BASE = "https://ntfy.sh/"
-_TOPIC_RE = re.compile(r"^[A-Za-z0-9_-]{6,64}$")
+_TOPIC_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 TIMEOUT = 5.0
 ENV_TARGET = "CORTEX_NOTIFY_TARGET"
 
@@ -47,7 +47,7 @@ def _default_send(req: urllib.request.Request) -> None:
 def validate_target(kind: str, target: str) -> str | None:
     """Return a problem description (never containing the target), or None."""
     if kind == "ntfy":
-        return None if _TOPIC_RE.match(target or "") else "ntfy topic must be 6-64 letters/digits/_/-"
+        return None if _TOPIC_RE.fullmatch(target or "") else "ntfy topic must be 16-64 letters/digits/_/-"
     if kind == "webhook":
         try:
             parts = urlsplit(target)

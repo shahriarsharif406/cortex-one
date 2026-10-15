@@ -279,9 +279,9 @@ def test_webhook_payload(settings):
 
 
 def test_env_target_overrides_config(settings):
-    n = Notifier.from_settings(settings_for(settings, "ntfy", "from-config-topic"),
-                               env={notify.ENV_TARGET: "from-env-topic"}, send=lambda r: None)
-    assert n.target == "from-env-topic"
+    n = Notifier.from_settings(settings_for(settings, "ntfy", "from-config-topic-01"),
+                               env={notify.ENV_TARGET: "from-env-topic-0123456"}, send=lambda r: None)
+    assert n.target == "from-env-topic-0123456"
 
 
 def test_notifier_failure_is_silent_and_never_logs_the_target(settings, caplog):

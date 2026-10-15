@@ -84,9 +84,10 @@ class SmsHandler:
         actor = _mask(number)
         allowed = {normalize_number(n) for n in s.sms_allowed_numbers}
 
-        mode = "totp" if s.sms_mode == "totp" else "pin"
+        raw_mode = s.sms_mode.strip().lower() if isinstance(s.sms_mode, str) else ""
+        mode = raw_mode if raw_mode in ("pin", "totp") else ""    # unknown value = SMS off
         secret = self._secret() if mode == "totp" else None
-        enabled = bool(secret) if mode == "totp" else bool(s.sms_pin_hash)
+        enabled = bool(secret) if mode == "totp" else (mode == "pin" and bool(s.sms_pin_hash))
         if not enabled or number not in allowed:
             # Unknown sender or SMS disabled: log, never reply (no oracle).
             self.engine.audit.log(actor, "sms", "-", {}, "rejected", "sender not allowed")

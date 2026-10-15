@@ -8,8 +8,9 @@ plugins {
 }
 
 // Release signing: passwords and the keystore path come from android/key.properties
-// (gitignored; template: key.properties.example). Without it a release build falls
-// back to the debug key so `flutter build apk --release` still works for testing.
+// (gitignored; template: key.properties.example). Without it a RELEASE build is
+// refused (debug builds are unaffected): an APK signed with the shared debug key
+// is not something to install on the phone that controls your laptop.
 val keyProps = Properties().apply {
     val f = rootProject.file("key.properties")
     if (f.exists()) f.inputStream().use { load(it) }
@@ -53,11 +54,22 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keyProps.containsKey("storeFile"))
-                signingConfigs.getByName("release")
-            else
-                signingConfigs.getByName("debug")
+            if (keyProps.containsKey("storeFile")) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
+    }
+}
+
+gradle.taskGraph.whenReady {
+    val wantsRelease = allTasks.any {
+        it.name.matches(Regex("(assemble|bundle|package)Release.*"))
+    }
+    if (wantsRelease && !keyProps.containsKey("storeFile")) {
+        throw GradleException(
+            "Release build needs android/key.properties (copy key.properties.example, " +
+                "see NEEDS_ME.md). Refusing to sign with the debug key."
+        )
     }
 }
 

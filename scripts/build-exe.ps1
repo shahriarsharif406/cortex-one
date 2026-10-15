@@ -50,7 +50,7 @@ Write-Host "Command : python $($pyiArgs -join ' ')"
 Write-Host "Output  : $(Join-Path $ProjectDir 'dist\CortexOneAgent')"
 
 if ($PSCmdlet.ShouldProcess('dist\CortexOneAgent', 'Build with PyInstaller')) {
-    & $py @args
+    & $py @pyiArgs
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed with exit code $LASTEXITCODE" }
     Write-Host 'Built. Try: dist\CortexOneAgent\CortexOneAgent.exe doctor'
     Write-Host 'To start at logon with the exe, edit run-agent.ps1 to call it instead of python -m agent.main serve.'

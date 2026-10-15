@@ -35,6 +35,11 @@ class Engine:
         if via in self.RESERVED_VIA:
             self.audit.log(actor, via, action, params, "rejected", "reserved channel")
             return ActionResult(False, "Not allowed.")
+        spec = REGISTRY.get(action)
+        if via == "ai" and spec is not None and spec.risk == "high":
+            # defence in depth: the AI layer already refuses these; so does the engine
+            self.audit.log(actor, via, action, params, "rejected", "high-risk action from the AI")
+            return ActionResult(False, "The AI cannot run this action.")
         return self._execute(action, params, actor, via)
 
     def run_power_action(self, battery_percent: float | None,

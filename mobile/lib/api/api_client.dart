@@ -59,8 +59,10 @@ abstract class CortexApi {
 
 typedef ApiFactory = CortexApi Function(String baseUrl, String? token);
 
-/// Plain http is only acceptable on the owner's own network: loopback, private
-/// LAN ranges, Tailscale (100.64.0.0/10, *.ts.net) and the Android emulator.
+/// Plain http is only acceptable over Tailscale (100.64.0.0/10, *.ts.net, which
+/// WireGuard already encrypts), on this phone itself, or in the Android emulator.
+/// Ordinary LAN ranges (192.168.x, 10.x, 172.16-31.x) are NOT accepted: anyone on
+/// that Wi-Fi could read the bearer token. Use https there.
 /// Android's network security config cannot express IP ranges, so this is the
 /// place where "no cleartext to the public internet" is enforced.
 bool isPrivateOrTailscaleHost(String host) {
@@ -70,10 +72,8 @@ bool isPrivateOrTailscaleHost(String host) {
   if (m == null) return false;
   final o = [for (var i = 1; i <= 4; i++) int.parse(m.group(i)!)];
   if (o.any((n) => n > 255)) return false;
-  return o[0] == 10 ||
-      o[0] == 127 ||
-      (o[0] == 172 && o[1] >= 16 && o[1] <= 31) ||
-      (o[0] == 192 && o[1] == 168) ||
+  return o[0] == 127 ||
+      (o[0] == 10 && o[1] == 0 && o[2] == 2 && o[3] == 2) || // emulator host
       (o[0] == 100 && o[1] >= 64 && o[1] <= 127);
 }
 

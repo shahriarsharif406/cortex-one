@@ -97,6 +97,20 @@ class Context:
 
 
 # ------------------------------------------------------------ path safety
+_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
+             *(f"LPT{i}" for i in range(1, 10))}
+
+
+def _odd_windows_name(raw: str, resolved: Path) -> bool:
+    """Alternate data streams and DOS device names ('NUL', 'COM1.txt') are never files
+    we want to touch, whatever folder they sit in."""
+    rest = re.sub(r"^(?:\\\\\?\\)?[A-Za-z]:", "", raw)
+    if ":" in rest:
+        return True
+    return any(part.split(".")[0].strip().upper() in _RESERVED
+               for part in resolved.parts)
+
+
 def resolve_allowed(path: str, roots: list[Path]) -> Path:
     if not roots:
         raise ActionError("No folders are allowed yet. Set allowed_roots in config.json.")
@@ -107,8 +121,21 @@ def resolve_allowed(path: str, roots: list[Path]) -> Path:
     for root in roots:
         r = Path(root).expanduser().resolve()
         if p == r or r in p.parents:
+            if _odd_windows_name(str(path), p.relative_to(r) if p != r else Path(".")):
+                raise ActionError("That file name is not allowed.")
             return p
     raise ActionError("That path is outside the allowed folders.")
+
+
+def _refuse_screenshots_folder(ctx: "Context", target: Path) -> None:
+    """Nothing but take_screenshot may create files there: the phone can download
+    from that folder, so a copy named like a screenshot would be a file-read hole."""
+    try:
+        shots = resolve_allowed(str(ctx.settings.screenshots_dir), ctx.settings.allowed_roots)
+    except ActionError:
+        return
+    if target == shots or shots in target.parents:
+        raise ActionError("The screenshots folder is reserved for screenshots.")
 
 
 # ---------------------------------------------------------------- actions
@@ -210,6 +237,16 @@ def find_files(ctx: Context, params: dict[str, Any]) -> ActionResult:
     found: list[str] = []
     seen = 0
     for dirpath, dirnames, filenames in os.walk(root):
+        # os.walk follows NTFS junctions (is_symlink() is False for them): keep only
+        # sub-folders that still resolve inside the allowed roots.
+        keep = []
+        for d in dirnames:
+            try:
+                resolve_allowed(str(Path(dirpath) / d), ctx.settings.allowed_roots)
+                keep.append(d)
+            except ActionError:
+                pass
+        dirnames[:] = keep
         for name in filenames + dirnames:
             seen += 1
             if query in name.lower():
@@ -223,6 +260,7 @@ def find_files(ctx: Context, params: dict[str, Any]) -> ActionResult:
 def copy_file(ctx: Context, params: dict[str, Any]) -> ActionResult:
     src = resolve_allowed(params["src"], ctx.settings.allowed_roots)
     dst = resolve_allowed(params["dst"], ctx.settings.allowed_roots)
+    _refuse_screenshots_folder(ctx, dst)
     if not src.is_file():
         raise ActionError("Source is not a file.")
     if dst.exists():
@@ -234,6 +272,7 @@ def copy_file(ctx: Context, params: dict[str, Any]) -> ActionResult:
 
 def make_folder(ctx: Context, params: dict[str, Any]) -> ActionResult:
     path = resolve_allowed(params["path"], ctx.settings.allowed_roots)
+    _refuse_screenshots_folder(ctx, path)
     path.mkdir(parents=True, exist_ok=True)
     return ActionResult(True, "Folder ready.", {"path": str(path)})
 
@@ -271,7 +310,8 @@ MAX_LOG_LINES = 200
 MAX_LOG_READ_BYTES = 64 * 1024
 MAX_LOG_CHARS = 8_000
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?")
-_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f‪-‮⁦-⁩]")
+_CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2064"
+                      "\u2066-\u2069\ufeff\U000e0000-\U000e007f]")
 
 
 def _int_param(params: dict[str, Any], key: str, default: int, lo: int, hi: int) -> int:

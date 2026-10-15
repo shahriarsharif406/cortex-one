@@ -57,7 +57,7 @@ def list_screenshots(settings: Settings) -> list[dict]:
         raise
     rows = []
     for p in folder.iterdir():
-        if NAME_RE.match(p.name) and _is_plain_file(p):
+        if NAME_RE.fullmatch(p.name) and _is_plain_file(p):
             st = p.stat()
             rows.append({"name": p.name, "size": st.st_size, "modified": int(st.st_mtime)})
     rows.sort(key=lambda r: (r["modified"], r["name"]), reverse=True)
@@ -65,7 +65,7 @@ def list_screenshots(settings: Settings) -> list[dict]:
 
 
 def resolve_screenshot(settings: Settings, name: str) -> Path:
-    if not isinstance(name, str) or not NAME_RE.match(name):
+    if not isinstance(name, str) or not NAME_RE.fullmatch(name):
         raise ScreenshotError(400, "Invalid file name.")
     folder = _folder(settings)
     path = folder / name
@@ -78,6 +78,11 @@ def resolve_screenshot(settings: Settings, name: str) -> Path:
     if real.parent != folder:
         raise ScreenshotError(404, "No such screenshot.")
     return real
+
+
+def looks_like_image(data: bytes) -> bool:
+    """Only real PNG / JPEG bytes are ever served, whatever the file is called."""
+    return data.startswith(b"\x89PNG\r\n\x1a\n") or data.startswith(b"\xff\xd8\xff")
 
 
 def pillow_available() -> bool:
@@ -97,6 +102,8 @@ def load_screenshot(settings: Settings, name: str, width: int | None = None,
     if path.stat().st_size > MAX_BYTES:
         raise ScreenshotError(413, "That screenshot is too large to send.")
     data = path.read_bytes()
+    if not looks_like_image(data):
+        raise ScreenshotError(415, "That file is not a screenshot image.")
     mime = MIME[path.suffix[1:]]
     if width is None or not pillow_available():
         return data, mime
@@ -121,7 +128,7 @@ def prune(folder: Path, keep: int) -> int:
     """Delete the oldest agent-made screenshots beyond ``keep``. Only files that
     match NAME_RE, are regular (not links) and sit directly in ``folder``."""
     keep = max(1, int(keep))
-    files = [p for p in folder.iterdir() if NAME_RE.match(p.name) and _is_plain_file(p)]
+    files = [p for p in folder.iterdir() if NAME_RE.fullmatch(p.name) and _is_plain_file(p)]
     files.sort(key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
     removed = 0
     for p in files[keep:]:

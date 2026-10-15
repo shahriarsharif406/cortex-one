@@ -237,7 +237,7 @@ const Map<String, String> _bn = {
   'alert_banner_hint': 'ল্যাপটপ কারেন্ট ছাড়া চলছে বা ব্যাটারি কম।',
   // clearer connection errors
   'server_not_private':
-      'শুধু নিজের নেটওয়ার্কের ঠিকানা (Tailscale 100.x, 192.168.x, 10.x) বা https চলবে। পাবলিক ঠিকানায় http নয়।',
+      'http শুধু Tailscale ঠিকানায় (100.x বা *.ts.net) চলবে; অন্য Wi-Fi-তে কেউ টোকেন দেখে ফেলতে পারে। অন্য ঠিকানায় https লাগবে।',
   'err_pair_wrong_address':
       'এই ঠিকানায় Cortex One এজেন্ট পাওয়া যায়নি। IP ও পোর্ট (ডিফল্ট 8765) আবার দেখুন; ল্যাপটপে `tailscale ip -4` চালান।',
   'err_pair_offline':
@@ -407,7 +407,7 @@ const Map<String, String> _en = {
   'alert_banner_hint': 'The laptop is off mains power or the battery is low.',
   // clearer connection errors
   'server_not_private':
-      'Only addresses on your own network (Tailscale 100.x, 192.168.x, 10.x) or https are accepted. No plain http to public addresses.',
+      'Plain http is only accepted for Tailscale addresses (100.x or *.ts.net); on other Wi-Fi someone could read the token. Any other address needs https.',
   'err_pair_wrong_address':
       'No Cortex One agent answered at this address. Check the IP and port (default 8765); run `tailscale ip -4` on the laptop.',
   'err_pair_offline':

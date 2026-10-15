@@ -11,12 +11,13 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from . import __version__, screenshots
-from .actions import REGISTRY
+from .actions import REGISTRY, ActionError, validate_params
 from .ai import (MAX_INSTRUCTION_LEN, AIUnavailable, AITask, AITaskResult,
                  Orchestrator, capabilities)
 from .config import Settings
 from .engine import Engine
-from .security import Device, PairingLocked, RateLimiter, verify_secret
+from .security import (Device, LockoutTracker, PairingLocked, RateLimiter,
+                       TooManyPending, verify_secret)
 from .sms import SmsHandler
 
 
@@ -78,6 +79,10 @@ def create_app(settings: Settings | None = None,
     sms = SmsHandler(engine)
     ai = Orchestrator(engine, client=ai_client)
     ai_limiter = RateLimiter(settings.ai_requests_per_minute)
+    # /sms/inbound is unauthenticated until the secret is checked, and checking costs
+    # a PBKDF2 run: throttle and lock out per client address BEFORE doing it.
+    sms_limiter = RateLimiter(30)
+    sms_lockout = LockoutTracker(5, 300)
     app = FastAPI(title="Cortex One Agent", docs_url=None, redoc_url=None,
                   openapi_url=None)
     app.state.engine = engine
@@ -118,7 +123,7 @@ def create_app(settings: Settings | None = None,
     def pair(body: PairRequest, request: Request) -> dict[str, str]:
         client = request.client.host if request.client else "unknown"
         try:
-            token = engine.pairing.pair(body.code, body.device_name)
+            token = engine.pairing.pair(body.code, body.device_name, client)
         except PairingLocked:
             engine.audit.log(f"client:{client}", "http", "pair", {}, "rejected",
                              "pairing locked")
@@ -145,8 +150,17 @@ def create_app(settings: Settings | None = None,
             raise HTTPException(404, "Unknown action.")
         actor = f"device:{device.name}"
         if spec.risk == "high":
+            try:   # validate first: only clean, small params may be stored or audited
+                clean = validate_params(spec, body.params)
+            except ActionError as exc:
+                engine.audit.log(actor, "http", name, {}, "denied", str(exc))
+                raise HTTPException(400, str(exc))
+            body.params = dict(clean)
             if not body.confirm_token:
-                token = engine.confirmations.issue(device.id, name, body.params)
+                try:
+                    token = engine.confirmations.issue(device.id, name, body.params)
+                except TooManyPending:
+                    raise HTTPException(429, "Too many confirmations are waiting. Answer or wait.")
                 engine.audit.log(actor, "http", name, body.params, "pending",
                                  "confirmation requested")
                 return {"status": "confirmation_required",
@@ -292,12 +306,17 @@ def create_app(settings: Settings | None = None,
         return engine.audit.recent(limit)
 
     @app.post("/sms/inbound")
-    def sms_inbound(body: SmsInbound,
+    def sms_inbound(body: SmsInbound, request: Request,
                     x_gateway_secret: str | None = Header(default=None)) -> dict:
+        client = request.client.host if request.client else "unknown"
+        if sms_lockout.is_locked(client) or not sms_limiter.allow(client):
+            raise HTTPException(429, "Too many requests.")
         stored = settings.gateway_secret_hash
         if not stored or not x_gateway_secret or not verify_secret(
                 x_gateway_secret, stored):
+            sms_lockout.record_failure(client)
             raise HTTPException(401, "Not authorised.")
+        sms_lockout.reset(client)
         reply = sms.handle(body.sender, body.text)
         return {"reply": reply}
 

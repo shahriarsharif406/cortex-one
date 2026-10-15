@@ -7,6 +7,10 @@ from typing import Any, Callable
 
 from .db import Database
 
+MAX_ROWS = 50_000        # the trail is a rolling window, never unbounded disk use
+PRUNE_EVERY = 200
+MAX_PARAMS_JSON = 2000
+
 SECRET_KEYS = {"token", "pin", "password", "secret", "confirm_token", "code"}
 
 
@@ -26,6 +30,7 @@ class AuditLog:
     def __init__(self, db: Database, now: Callable[[], float] = time.time):
         self.db = db
         self.now = now
+        self._count = 0
 
     def log(
         self,
@@ -45,11 +50,15 @@ class AuditLog:
                     actor,
                     via,
                     action,
-                    json.dumps(redact(params), ensure_ascii=False),
+                    json.dumps(redact(params), ensure_ascii=False, default=str)[:MAX_PARAMS_JSON],
                     status,
                     detail[:500],
                 ),
             )
+            self._count += 1
+            if self._count % PRUNE_EVERY == 0:
+                c.execute("DELETE FROM audit_log WHERE id <= (SELECT MAX(id) FROM audit_log) - ?",
+                          (MAX_ROWS,))
 
     def recent(self, limit: int = 50) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit), 500))
