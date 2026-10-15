@@ -93,6 +93,18 @@ def cmd_audit(settings: Settings, args) -> int:
     return 0
 
 
+def cmd_export_audit(settings: Settings, args) -> int:
+    from .audit import export_csv
+
+    engine = Engine(settings)
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = settings.data_dir / f"audit-{stamp}.csv"
+    n = export_csv(engine.db, path, args.days)
+    print(f"{n} row(s) -> {path}")
+    return 0
+
+
 def cmd_ask(settings: Settings, args) -> int:
     from .ai import AIUnavailable, Orchestrator
 
@@ -182,6 +194,9 @@ def main(argv: list[str] | None = None) -> int:
     q = sub.add_parser("ask", help="give the AI operator an instruction (needs ANTHROPIC_API_KEY)")
     q.add_argument("instruction", nargs="+")
     q.set_defaults(fn=cmd_ask)
+    e = sub.add_parser("export-audit", help="write a redacted CSV of recent audit entries")
+    e.add_argument("--days", type=int, default=7)
+    e.set_defaults(fn=cmd_export_audit)
     sub.add_parser("ai-usage", help="today's AI token use").set_defaults(fn=cmd_ai_usage)
     sub.add_parser("doctor", help="check the setup").set_defaults(fn=cmd_doctor)
     sub.add_parser("init-config", help="write a default config.json if none exists"

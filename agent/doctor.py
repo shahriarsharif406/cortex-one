@@ -11,7 +11,7 @@ import socket
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Callable, Mapping
 
 from .config import Settings
 
@@ -44,8 +44,42 @@ def _app_exists(cmd: list[str]) -> bool:
     return Path(exe).exists() if os.path.isabs(exe) else shutil.which(exe) is not None
 
 
+TASK_NAME = "CortexOneAgent"
+
+
+def startup_task_state(name: str = TASK_NAME) -> str | None:
+    """'ready' | 'disabled' | 'running' | 'missing', or None when it cannot be asked
+    (not Windows). Read-only: schtasks /Query with a fixed task name."""
+    if sys.platform != "win32":
+        return None
+    import subprocess
+
+    try:
+        proc = subprocess.run(["schtasks", "/Query", "/TN", name, "/FO", "LIST"],
+                              capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return "missing"
+    low = proc.stdout.lower()
+    if "disabled" in low:
+        return "disabled"
+    return "running" if "running" in low else "ready"
+
+
+def _tailscale_ip(host: str) -> bool:
+    parts = host.split(".")
+    try:
+        a, b = int(parts[0]), int(parts[1])
+    except (ValueError, IndexError):
+        return False
+    return len(parts) == 4 and a == 100 and 64 <= b <= 127
+
+
 def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
-               version: tuple[int, int] | None = None) -> list[Check]:
+               version: tuple[int, int] | None = None,
+               startup_probe: Callable[[], str | None] = startup_task_state,
+               battery_probe: Callable[[], object | None] | None = None) -> list[Check]:
     env = os.environ if env is None else env
     v = version or sys.version_info[:2]
     out: list[Check] = []
@@ -102,6 +136,15 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
                          "host is 0.0.0.0, which exposes every network; use the Tailscale IP"))
     else:
         out.append(Check(OK, f"host {settings.host} নিরাপদ", f"host {settings.host} is not 0.0.0.0"))
+    if _tailscale_ip(settings.host):
+        out.append(Check(OK, "host একটি Tailscale IP (ফোন পৌঁছাতে পারবে)",
+                         "host is a Tailscale IP (the phone can reach it)"))
+    elif settings.host in ("127.0.0.1", "localhost", "::1"):
+        out.append(Check(WARN, "host শুধু এই ল্যাপটপ থেকে পৌঁছানো যায়; ফোনের জন্য Tailscale IP দিন",
+                         "host is loopback: the phone cannot reach it; set the Tailscale IP"))
+    else:
+        out.append(Check(WARN, "host Tailscale রেঞ্জের (100.64-127.x) নয়",
+                         "host is not in the Tailscale range (100.64.0.0/10)"))
     if _port_free(settings.host, settings.port):
         out.append(Check(OK, f"পোর্ট {settings.port} ফাঁকা", f"port {settings.port} is free"))
     else:
@@ -135,6 +178,11 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
     try:
         resolve_allowed(str(settings.screenshots_dir), settings.allowed_roots)
         out.append(Check(OK, "স্ক্রিনশট ফোল্ডার অনুমোদিত এলাকার ভেতরে", "screenshots folder is inside allowed roots"))
+        if Path(settings.screenshots_dir).is_dir():
+            out.append(Check(OK, "স্ক্রিনশট ফোল্ডার আছে", "screenshots folder exists"))
+        else:
+            out.append(Check(WARN, "স্ক্রিনশট ফোল্ডার এখনো নেই (প্রথম screenshot-এ তৈরি হবে)",
+                             "screenshots folder does not exist yet (created on first screenshot)"))
     except ActionError:
         out.append(Check(WARN, "স্ক্রিনশট ফোল্ডার allowed_roots-এর বাইরে; screenshot বন্ধ",
                          "screenshots_dir is outside allowed_roots; screenshots are off"))
@@ -146,12 +194,68 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
         else:
             out.append(Check(WARN, f"লগ ফাইল নেই: {short}", f"log file missing: {short}"))
 
-    # SMS
-    if settings.sms_pin_hash and settings.sms_allowed_numbers and settings.gateway_secret_hash:
-        out.append(Check(OK, f"SMS চালু ({len(settings.sms_allowed_numbers)}টি নম্বর)",
-                         f"SMS is set up ({len(settings.sms_allowed_numbers)} number(s))"))
+    # SMS (never prints PINs, secrets or numbers)
+    from . import totp
+
+    gateway = bool(settings.gateway_secret_hash and settings.sms_allowed_numbers)
+    if settings.sms_mode == "totp":
+        have_secret = totp.load_secret(settings.data_dir) is not None
+        if have_secret and gateway:
+            out.append(Check(OK, "SMS চালু, TOTP কোড মোড (replay সুরক্ষিত)",
+                             "SMS is set up with TOTP codes (replay protected)"))
+            out.append(Check(OK, "TOTP সিক্রেট কনফিগার করা আছে", "TOTP secret is configured"))
+        else:
+            out.append(Check(WARN, "TOTP মোড বাছা কিন্তু সিক্রেট/গেটওয়ে নেই (sms-setup --totp চালান)",
+                             "TOTP mode selected but secret/gateway missing (run sms-setup --totp)"))
+    elif settings.sms_pin_hash and gateway:
+        out.append(Check(WARN, f"SMS চালু ({len(settings.sms_allowed_numbers)}টি নম্বর) কিন্তু স্থির পিন: replay সুরক্ষা নেই; TOTP ভালো",
+                         f"SMS is set up ({len(settings.sms_allowed_numbers)} number(s)) with a static PIN: no replay protection; TOTP is better"))
+        out.append(Check(WARN, "TOTP কনফিগার করা নেই", "TOTP is not configured"))
     else:
         out.append(Check(WARN, "SMS চালু করা হয়নি (sms-setup চালান)", "SMS not set up (run sms-setup)"))
+
+    # startup task
+    state = startup_probe()
+    if state is None:
+        out.append(Check(WARN, "অটো-স্টার্ট টাস্ক যাচাই করা যায়নি (Windows নয়)",
+                         "startup task could not be checked (not Windows)"))
+    elif state == "missing":
+        out.append(Check(WARN, "অটো-স্টার্ট টাস্ক ইনস্টল করা নেই (install-startup.ps1)",
+                         "startup task not installed (install-startup.ps1)"))
+    elif state == "disabled":
+        out.append(Check(WARN, "অটো-স্টার্ট টাস্ক বন্ধ করা আছে", "startup task is disabled"))
+    else:
+        out.append(Check(OK, f"অটো-স্টার্ট টাস্ক আছে ({state})", f"startup task is installed ({state})"))
+
+    # power watcher, battery, notifier (presence only, never the value)
+    from .notify import Notifier, validate_target
+    from .power import psutil_battery
+
+    battery = (battery_probe or psutil_battery)()
+    if battery is not None:
+        out.append(Check(OK, "ব্যাটারি পাওয়া গেছে (কারেন্ট-কাট সতর্কতা কাজ করবে)",
+                         "battery detected (power-cut alerts will work)"))
+    else:
+        out.append(Check(WARN, "ব্যাটারি পাওয়া যায়নি (ডেস্কটপ?); পাওয়ার ওয়াচার নিষ্ক্রিয় থাকবে",
+                         "no battery detected (desktop?); the power watcher stays idle"))
+    action = settings.critical_action
+    if action not in ("none", "hibernate", "lock"):
+        out.append(Check(WARN, "critical_action অবৈধ; কিছুই করা হবে না (none/hibernate/lock)",
+                         "critical_action is invalid; nothing will be done (none/hibernate/lock)"))
+    elif action != "none":
+        out.append(Check(OK, f"critical_action = {action} (shutdown কখনো নয়)",
+                         f"critical_action = {action} (never shutdown)"))
+    kind = (settings.notifier_type or "").strip().lower()
+    target = (env.get("CORTEX_NOTIFY_TARGET") or settings.notifier_target or "").strip()
+    if not kind:
+        out.append(Check(OK, "পুশ নোটিফায়ার বন্ধ (ডিফল্ট)", "push notifier is off (default)"))
+    elif not target:
+        out.append(Check(WARN, "নোটিফায়ার ধরন দেওয়া আছে কিন্তু টার্গেট নেই",
+                         "notifier type is set but no target is configured"))
+    elif validate_target(kind, target):
+        out.append(Check(WARN, "নোটিফায়ার টার্গেট অবৈধ; বন্ধ থাকবে", "notifier target is invalid; it stays off"))
+    else:
+        out.append(Check(OK, f"পুশ নোটিফায়ার কনফিগার করা আছে ({kind})", f"push notifier is configured ({kind})"))
     return out
 
 

@@ -60,3 +60,35 @@ class AuditLog:
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+
+def export_csv(db: Database, path, days: int = 7, now: float | None = None) -> int:
+    """Write the last ``days`` days of the audit trail as CSV. Returns the row count.
+
+    Cells are re-scrubbed (tokens / keys / PINs) and neutralised against
+    spreadsheet formula injection (a leading = + - @ gets a quote).
+    """
+    import csv
+
+    from .logging_setup import scrub
+
+    days = max(1, min(int(days), 3650))
+    since = (time.time() if now is None else now) - days * 86400
+    with db.conn() as c:
+        rows = c.execute(
+            "SELECT ts, actor, via, action, params, status, detail FROM audit_log"
+            " WHERE ts >= ? ORDER BY id", (since,)).fetchall()
+
+    def cell(value: object) -> str:
+        text = scrub(str(value))
+        text = "".join(ch if ch >= " " or ch == "\t" else " " for ch in text)
+        return "'" + text if text[:1] in ("=", "+", "-", "@", "\t") else text
+
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f)
+        w.writerow(["time", "actor", "via", "action", "params", "status", "detail"])
+        for r in rows:
+            when = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r["ts"]))
+            w.writerow([when, cell(r["actor"]), cell(r["via"]), cell(r["action"]),
+                        cell(r["params"]), cell(r["status"]), cell(r["detail"])])
+    return len(rows)
