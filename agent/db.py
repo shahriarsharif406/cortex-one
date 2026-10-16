@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS alerts (
 CREATE TABLE IF NOT EXISTS ai_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts REAL NOT NULL,
+    device_id INTEGER NOT NULL DEFAULT 0,
     instruction TEXT NOT NULL,
     steps INTEGER NOT NULL,
     ok INTEGER NOT NULL,
@@ -66,6 +67,9 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.conn() as c:
             c.executescript(SCHEMA)
+            cols = [r[1] for r in c.execute("PRAGMA table_info(ai_history)")]
+            if "device_id" not in cols:          # table made by an earlier build
+                c.execute("ALTER TABLE ai_history ADD COLUMN device_id INTEGER NOT NULL DEFAULT 0")
 
     @contextmanager
     def conn(self):

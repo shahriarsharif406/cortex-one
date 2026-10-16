@@ -122,4 +122,5 @@ Tokens only in secure storage; plain http only to Tailscale/loopback; emergency 
 11. **Windows path semantics evolve** - the fuzz tests cover known tricks on Windows 10; new junction/reparse behaviours need re-testing after major Windows updates.
 12. **Real-world verification is incomplete**: no real Anthropic call, real shutdown/lock, real phone, real SMS gateway or APK build has been run in the automated suite (see `NEEDS_ME.md`).
 13. **The pre-commit hook is local** and can be bypassed with `--no-verify`; `scripts/check.ps1` repeats the scan before a release.
-14. **Supply chain**: dependencies are pinned loosely in `requirements.txt`; review updates before installing.
+14. **Watcher limits**: a very busy log (more than 256 KB between 30 s checks) can hide an earlier match; `process_exit` matches the process name only; log paths from `allowed_logs` are opened as given (owner-controlled config). Free-text PIN scrubbing is best effort.
+15. **Supply chain**: dependencies are pinned loosely in `requirements.txt`; review updates before installing.

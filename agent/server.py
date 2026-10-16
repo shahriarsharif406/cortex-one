@@ -279,7 +279,7 @@ def create_app(settings: Settings | None = None,
     @app.get("/ai/history")
     def ai_history(limit: int = 50, device: Device = Depends(current_device)) -> list[dict]:
         """The last AI tasks: time, first 200 characters of the instruction, steps, ok, tokens."""
-        return ai.history(limit)
+        return ai.history(limit, device.id)
 
     @app.get("/ai/usage")
     def ai_usage(device: Device = Depends(current_device)) -> dict[str, int]:

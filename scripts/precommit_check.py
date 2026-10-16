@@ -29,6 +29,7 @@ REALISTIC_ANTHROPIC = re.compile(r"sk-ant-[A-Za-z0-9_-]{30,}")
 ASSIGN = re.compile(r"""(?ix)
     (?P<name>[A-Za-z_][\w.-]*)\s*(?:=|:)\s*(?P<q>["']?)(?P<value>[A-Za-z0-9_+/=~-]{32,})(?P=q)(?![\w+/=~-])""")
 ALLOW_MARK = "secret-scan:allow"
+MAX_SCAN_LINE = 5000
 TEST_DIRS = ("tests/",)
 # The scanner and its installer have to spell the patterns they look for.
 SELF_FILES = ("scripts/precommit_check.py", "scripts/install-git-hooks.ps1")
@@ -64,6 +65,10 @@ def scan_line(path: str, line: str) -> str | None:
             return "Anthropic API key pattern (sk-ant-)"
     if in_tests:
         return None            # test fixtures hold long fake ids on purpose
+    if len(line) > MAX_SCAN_LINE:
+        return None            # minified blobs: the assignment regex would be quadratic
+    if len(line) > MAX_SCAN_LINE:
+        return None            # minified blobs: the assignment regex would be quadratic
     for m in ASSIGN.finditer(line):
         value = m.group("value")
         if "/" in value and value.count("/") > 2:
@@ -84,24 +89,22 @@ def git(*args: str) -> str:
 
 
 def staged_findings() -> list[str]:
+    """Scan the staged BLOB of every added/changed file (not the diff text, whose
+    '+++' / quoted-path lines can be forged by file content)."""
     out: list[str] = []
-    files = [f for f in git("diff", "--cached", "--name-only", "--diff-filter=ACMR").splitlines() if f]
-    for f in files:
+    raw = subprocess.run(["git", "-c", "core.quotepath=off", "diff", "--cached", "--name-only", "-z",
+                          "--diff-filter=ACMR"], capture_output=True, check=True).stdout
+    for f in [x.decode("utf-8", "replace") for x in raw.split(b"\0") if x]:
         if blocked_file(f):
             out.append(f"{f}: this kind of file must never be committed")
-    current, lineno = "", 0
-    for raw in git("diff", "--cached", "-U0", "--no-color", "--no-ext-diff").splitlines():
-        if raw.startswith("+++ "):
-            current = raw[6:] if raw.startswith("+++ b/") else ""
-        elif raw.startswith("@@"):
-            m = re.search(r"\+(\d+)", raw)
-            lineno = int(m.group(1)) if m else 0
-        elif raw.startswith("+") and current and not any(
-                fnmatch.fnmatch(os.path.basename(current).lower(), s) for s in SKIP_CONTENT):
-            why = scan_line(current, raw[1:])
-            if why:
-                out.append(f"{current}:{lineno}: {why}")
-            lineno += 1
+            continue
+        if any(fnmatch.fnmatch(os.path.basename(f).lower(), s) for s in SKIP_CONTENT):
+            continue
+        blob = subprocess.run(["git", "show", ":" + f], capture_output=True).stdout[:2_000_000]
+        if b"\x00" in blob:
+            continue
+        for n, why in scan_text(f, blob.decode("utf-8", "replace")):
+            out.append(f"{f}:{n}: {why}")
     return out
 
 

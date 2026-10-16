@@ -294,12 +294,13 @@ class RuleWatcher:
 
     # -- read-only view for GET /watch ------------------------------------------
     def snapshot(self) -> dict[str, Any]:
-        with self._lock:
-            rules, problems = self.rules()
-            items = [{"name": r.name, "kind": r.kind, "target": r.target,
-                      "minutes": r.minutes,
-                      "state": self._status.get(r.name, "waiting"),
-                      "last_alert": self._last_alert.get(r.name)} for r in rules]
+        # No tick lock here: a hung disk inside tick() must not pile up HTTP requests.
+        rules, problems = self.rules()
+        status, last = dict(self._status), dict(self._last_alert)
+        items = [{"name": r.name, "kind": r.kind, "target": r.target,
+                  "minutes": r.minutes,
+                  "state": status.get(r.name, "waiting"),
+                  "last_alert": last.get(r.name)} for r in rules]
         return {"rules": items, "problems": problems,
                 "alerts": self.engine.alerts.recent(20, scope="watch")}
 

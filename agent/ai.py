@@ -285,7 +285,7 @@ class Orchestrator:
         from .logging_setup import scrub
 
         self.engine.audit.log(task.actor, "ai", "ai_task",
-                              {"instruction": scrub(task.instruction[:200])},
+                              {"instruction": scrub(task.instruction)[:200]},
                               "ok" if result.ok else "failed",
                               result.stopped_reason or f"{len(result.steps)} step(s)")
         return result
@@ -299,9 +299,9 @@ class Orchestrator:
         try:
             with self.engine.db.conn() as c:
                 c.execute(
-                    "INSERT INTO ai_history (ts, instruction, steps, ok, tokens, reason)"
-                    " VALUES (?, ?, ?, ?, ?, ?)",
-                    (time.time(), scrub(task.instruction[:HISTORY_INSTRUCTION_CHARS]),
+                    "INSERT INTO ai_history (ts, device_id, instruction, steps, ok, tokens, reason)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (time.time(), int(task.device_id), scrub(task.instruction)[:HISTORY_INSTRUCTION_CHARS],
                      len(r.steps), int(bool(r.ok)), int(r.tokens_used),
                      scrub(r.stopped_reason)[:200]))
                 c.execute("DELETE FROM ai_history WHERE id <= (SELECT MAX(id) FROM ai_history) - ?",
@@ -309,12 +309,15 @@ class Orchestrator:
         except Exception:
             pass
 
-    def history(self, limit: int = 50) -> list[dict[str, Any]]:
+    def history(self, limit: int = 50, device_id: int | None = None) -> list[dict[str, Any]]:
+        """Newest first. ``device_id`` limits it to one phone (the HTTP endpoint always does);
+        the local CLI passes None and sees everything."""
         limit = max(1, min(int(limit), 50))
+        where, args = ("WHERE device_id = ? ", (int(device_id),)) if device_id is not None else ("", ())
         with self.engine.db.conn() as c:
             rows = c.execute(
-                "SELECT ts, instruction, steps, ok, tokens, reason FROM ai_history"
-                " ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+                "SELECT ts, instruction, steps, ok, tokens, reason FROM ai_history "
+                + where + "ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
         return [{**dict(r), "ok": bool(r["ok"])} for r in rows]
 
     def _loop(self, client: Any, instruction: str, device_id: int,
