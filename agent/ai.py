@@ -48,6 +48,92 @@ class AIUnavailable(Exception):
     """The AI operator cannot run (no key, over budget, ...). Message is safe to show."""
 
 
+MAX_HISTORY_ROWS = 500           # retention: older AI task rows are deleted
+HISTORY_INSTRUCTION_CHARS = 200
+
+# (English, Bangla). Fixed sentences only: never the raw exception text or body.
+FAILURE_TEXT = {
+    "auth": ("The API key was rejected. Check the ANTHROPIC_API_KEY environment variable.",
+             "API key গ্রহণ হয়নি। ANTHROPIC_API_KEY এনভায়রনমেন্ট ভ্যারিয়েবল যাচাই করুন।"),
+    "credit": ("The Anthropic account has no credit left. Add credit in the console.",
+               "Anthropic অ্যাকাউন্টে ক্রেডিট নেই। কনসোলে ক্রেডিট যোগ করুন।"),
+    "rate_limit": ("Too many requests to the AI service. Wait a minute and try again.",
+                   "AI সার্ভিসে অনেক বেশি অনুরোধ গেছে। এক মিনিট পরে আবার চেষ্টা করুন।"),
+    "timeout": ("The AI service did not answer in time. Try again.",
+                "AI সার্ভিস সময়মতো উত্তর দেয়নি। আবার চেষ্টা করুন।"),
+    "model": ("The AI model was not found. Check ai_model in config.json.",
+              "AI মডেলটি পাওয়া যায়নি। config.json-এর ai_model যাচাই করুন।"),
+    "overloaded": ("The AI service is overloaded right now. Try again shortly.",
+                   "AI সার্ভিসে এখন অতিরিক্ত চাপ। একটু পরে আবার চেষ্টা করুন।"),
+    "network": ("Could not reach the AI service. Check the laptop's internet.",
+                "AI সার্ভিসে পৌঁছানো যায়নি। ল্যাপটপের ইন্টারনেট দেখুন।"),
+    "server": ("The AI service had an internal error. Try again later.",
+               "AI সার্ভিসে ভেতরের সমস্যা হয়েছে। পরে আবার চেষ্টা করুন।"),
+}
+
+
+def classify_failure(exc: BaseException) -> str:
+    """Map an SDK/HTTP exception to a FAILURE_TEXT key, or "other".
+
+    Uses the class name and the HTTP status only. The message is looked at just to
+    tell a credit problem from other 400s and is never copied anywhere.
+    """
+    name = type(exc).__name__
+    status = getattr(exc, "status_code", None)
+    status = status if isinstance(status, int) and not isinstance(status, bool) else None
+    if "Authentication" in name or "PermissionDenied" in name or status in (401, 403):
+        return "auth"
+    if status == 402 or (status == 400 or "BadRequest" in name) and \
+            "credit balance" in str(getattr(exc, "message", "") or exc).lower():
+        return "credit"
+    if "RateLimit" in name or status == 429:
+        return "rate_limit"
+    if "Overloaded" in name or status == 529:
+        return "overloaded"
+    if "Timeout" in name or isinstance(exc, TimeoutError):
+        return "timeout"
+    if "NotFound" in name or status == 404:
+        return "model"
+    if "Connection" in name or isinstance(exc, ConnectionError):
+        return "network"
+    if "InternalServer" in name or (status is not None and status >= 500):
+        return "server"
+    return "other"
+
+
+def failure_message(exc: BaseException) -> str:
+    key = classify_failure(exc)
+    if key == "other":
+        return (f"The AI service call failed ({type(exc).__name__}). "
+                f"AI সার্ভিস কল ব্যর্থ হয়েছে।")
+    en, bn = FAILURE_TEXT[key]
+    return f"{en} | {bn}"
+
+
+def dry_run_text(settings: Any, instruction: str = "") -> str:
+    """Exactly what `ask` would send (system prompt + tools + model limits). No network."""
+    payload = {"model": settings.ai_model, "max_tokens": settings.ai_max_output_tokens,
+               "max_steps": settings.ai_max_steps,
+               "system": SYSTEM_PROMPT + setup_note(settings),
+               "tools": build_tools(),
+               "messages": [{"role": "user", "content": (instruction or "<your instruction>")[:MAX_INSTRUCTION_LEN]}]}
+    system = payload.pop("system")
+    return ("=== SYSTEM PROMPT ===\n" + system + "\n\n=== REQUEST (JSON) ===\n"
+            + json.dumps(payload, indent=2, ensure_ascii=False)
+            + "\n\n(dry run: nothing was sent, no API key was read)")
+
+
+def cost_estimate(settings: Any, usage: dict[str, int]) -> float | None:
+    """USD for the given token counts using the owner's own prices; None when unset."""
+    def price(v: Any) -> float:
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else 0.0
+
+    p_in, p_out = price(settings.ai_price_per_mtok_input), price(settings.ai_price_per_mtok_output)
+    if not p_in or not p_out:
+        return None
+    return (usage["input_tokens"] * p_in + usage["output_tokens"] * p_out) / 1_000_000
+
+
 @dataclass
 class AITaskResult:
     ok: bool
@@ -121,7 +207,8 @@ def make_client(timeout: float):
     key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not key:
         raise AIUnavailable(
-            "AI is not set up: the ANTHROPIC_API_KEY environment variable is empty.")
+            "AI is not set up: the ANTHROPIC_API_KEY environment variable is empty. "
+            "AI সেট করা নেই: ANTHROPIC_API_KEY ভ্যারিয়েবল খালি।")
     import anthropic
 
     return anthropic.Anthropic(api_key=key, timeout=timeout, max_retries=2)
@@ -194,10 +281,38 @@ class Orchestrator:
         finally:
             self._busy.release()
         result = task.result
+        self._remember(task)
         self.engine.audit.log(task.actor, "ai", "ai_task", {"instruction": task.instruction[:200]},
                               "ok" if result.ok else "failed",
                               result.stopped_reason or f"{len(result.steps)} step(s)")
         return result
+
+    # --------------------------------------------------------------- history
+    def _remember(self, task: "AITask") -> None:
+        """One row per finished task. Text is scrubbed and clipped; failures are swallowed."""
+        from .logging_setup import scrub
+
+        r = task.result
+        try:
+            with self.engine.db.conn() as c:
+                c.execute(
+                    "INSERT INTO ai_history (ts, instruction, steps, ok, tokens, reason)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    (time.time(), scrub(task.instruction[:HISTORY_INSTRUCTION_CHARS]),
+                     len(r.steps), int(bool(r.ok)), int(r.tokens_used),
+                     scrub(r.stopped_reason)[:200]))
+                c.execute("DELETE FROM ai_history WHERE id <= (SELECT MAX(id) FROM ai_history) - ?",
+                          (MAX_HISTORY_ROWS,))
+        except Exception:
+            pass
+
+    def history(self, limit: int = 50) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 50))
+        with self.engine.db.conn() as c:
+            rows = c.execute(
+                "SELECT ts, instruction, steps, ok, tokens, reason FROM ai_history"
+                " ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{**dict(r), "ok": bool(r["ok"])} for r in rows]
 
     def _loop(self, client: Any, instruction: str, device_id: int,
               actor: str, result: AITaskResult) -> AITaskResult:
@@ -215,10 +330,7 @@ class Orchestrator:
                     model=s.ai_model, max_tokens=s.ai_max_output_tokens,
                     system=SYSTEM_PROMPT + setup_note(s), tools=tools, messages=messages)
             except Exception as exc:  # never leak details (or keys) to the phone
-                name = type(exc).__name__
-                hint = (" Check ANTHROPIC_API_KEY." if "Authentication" in name
-                        or "PermissionDenied" in name else "")
-                return self._stopped(result, f"The AI service call failed ({name}).{hint}")
+                return self._stopped(result, failure_message(exc))
             result.tokens_used += self._record(getattr(response, "usage", None))
 
             if getattr(response, "stop_reason", None) != "tool_use":

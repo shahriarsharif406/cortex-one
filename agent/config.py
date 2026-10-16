@@ -62,6 +62,10 @@ class Settings:
     ai_daily_token_cap: int = 200_000
     ai_requests_per_minute: int = 6
     ai_timeout_seconds: float = 30.0
+    # Cost estimate for `ai-usage`. YOU set the prices (USD per million tokens);
+    # nothing is hard-coded. 0 = not set.
+    ai_price_per_mtok_input: float = 0.0
+    ai_price_per_mtok_output: float = 0.0
     # Phase 2 allowlists. Empty means the capability is off.
     allowed_domains: list[str] = field(default_factory=list)      # open_url
     allowed_logs: dict[str, str] = field(default_factory=dict)    # tail_log: short name -> file

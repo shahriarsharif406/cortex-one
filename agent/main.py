@@ -110,7 +110,14 @@ def cmd_export_audit(settings: Settings, args) -> int:
 
 
 def cmd_ask(settings: Settings, args) -> int:
-    from .ai import AIUnavailable, Orchestrator
+    from .ai import AIUnavailable, Orchestrator, dry_run_text
+
+    if args.dry_run:
+        print(dry_run_text(settings, " ".join(args.instruction or [])))
+        return 0
+    if not args.instruction:
+        print("Give an instruction, or use --dry-run.", file=sys.stderr)
+        return 1
 
     engine = Engine(settings)
     try:
@@ -129,10 +136,30 @@ def cmd_ask(settings: Settings, args) -> int:
 
 
 def cmd_ai_usage(settings: Settings, _args) -> int:
-    from .ai import Orchestrator
+    from .ai import Orchestrator, cost_estimate
 
     u = Orchestrator(Engine(settings)).usage_today()
     print(f"Today: {u['total_tokens']} / {u['daily_cap']} tokens, {u['requests']} request(s)")
+    cost = cost_estimate(settings, u)
+    if cost is None:
+        print("Cost: set prices in config (ai_price_per_mtok_input / ai_price_per_mtok_output)"
+              " | খরচ দেখতে config-এ দাম বসান")
+    else:
+        print(f"Estimated cost today: ${cost:.4f} (with YOUR configured prices; check the console for the real bill)")
+    return 0
+
+
+def cmd_ai_history(settings: Settings, args) -> int:
+    from .ai import Orchestrator
+
+    rows = Orchestrator(Engine(settings)).history(args.limit)
+    for r in reversed(rows):
+        when = time.strftime("%m-%d %H:%M:%S", time.localtime(r["ts"]))
+        flag = "ok " if r["ok"] else "ERR"
+        text = r["instruction"].replace("\n", " ")
+        print(f"{when} [{flag}] steps={r['steps']} tokens={r['tokens']}  {text}")
+    if not rows:
+        print("No AI tasks yet.")
     return 0
 
 
@@ -196,12 +223,17 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--limit", type=int, default=30)
     a.set_defaults(fn=cmd_audit)
     q = sub.add_parser("ask", help="give the AI operator an instruction (needs ANTHROPIC_API_KEY)")
-    q.add_argument("instruction", nargs="+")
+    q.add_argument("instruction", nargs="*")
+    q.add_argument("--dry-run", action="store_true",
+                   help="print the exact system prompt and tool list; no network, no key")
     q.set_defaults(fn=cmd_ask)
     e = sub.add_parser("export-audit", help="write a redacted CSV of recent audit entries")
     e.add_argument("--days", type=int, default=7)
     e.set_defaults(fn=cmd_export_audit)
     sub.add_parser("ai-usage", help="today's AI token use").set_defaults(fn=cmd_ai_usage)
+    h = sub.add_parser("ai-history", help="the last AI tasks")
+    h.add_argument("--limit", type=int, default=50)
+    h.set_defaults(fn=cmd_ai_history)
     sub.add_parser("doctor", help="check the setup").set_defaults(fn=cmd_doctor)
     sub.add_parser("init-config", help="write a default config.json if none exists"
                    ).set_defaults(fn=cmd_init_config)

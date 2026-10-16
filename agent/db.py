@@ -44,6 +44,15 @@ CREATE TABLE IF NOT EXISTS alerts (
     plugged INTEGER,
     message TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ai_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    instruction TEXT NOT NULL,
+    steps INTEGER NOT NULL,
+    ok INTEGER NOT NULL,
+    tokens INTEGER NOT NULL,
+    reason TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
