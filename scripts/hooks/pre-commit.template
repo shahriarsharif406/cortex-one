@@ -1,0 +1,5 @@
+#!/bin/sh
+# Cortex One pre-commit hook (installed by scripts/install-git-hooks.ps1).
+# Blocks commits that contain API keys, secret files or long random-looking tokens.
+PY="${CORTEX_HOOK_PYTHON:-__PYTHON__}"
+exec "$PY" "__CHECKER__" --staged

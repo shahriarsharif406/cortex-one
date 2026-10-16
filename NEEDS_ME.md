@@ -26,7 +26,7 @@ cd mobile; flutter analyze; flutter test; cd ..      # আশা: No issues / 87
 3. key চ্যাটে বা ফাইলে লিখবেন না। শুধু ওই PowerShell উইন্ডোর জন্য:
 
 ```powershell
-$env:ANTHROPIC_API_KEY = "sk-ant-..."        # আপনার key, নিজে টাইপ করুন
+$env:ANTHROPIC_API_KEY = "<?????-key>"        # আপনার key, নিজে টাইপ করুন
 .\.venv\Scripts\python -m agent.main ask "আমার ল্যাপটপের অবস্থা বলো"
 .\.venv\Scripts\python -m agent.main ask "Downloads-এর PDF ফাইলগুলো দেখাও"
 .\.venv\Scripts\python -m agent.main ask "ল্যাপটপ বন্ধ করো"     # চালানো উচিত নয়! শুধু কনফার্মেশন চাইবে
@@ -35,7 +35,7 @@ $env:ANTHROPIC_API_KEY = "sk-ant-..."        # আপনার key, নিজে
 
 - **আসল API কল এখনো পরীক্ষা হয়নি।** মডেলের নাম (`ai_model`) বা অন্য গরমিল ধরা পড়তে পারে; ত্রুটির বার্তা আমাকে দেখান (key নয়)।
 - অটো-স্টার্টেও AI চালাতে চাইলে key ব্যবহারকারী-স্তরের ভ্যারিয়েবলে রাখতে হয় (রেজিস্ট্রিতে সাদা লেখায় থাকে; সচেতন ঝুঁকি):
-  `[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY","sk-ant-...","User")`
+  `[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY","<?????-key>","User")`
   না চাইলে করবেন না; তখন অটো-স্টার্ট এজেন্টে AI বন্ধ থাকবে, বাকি সব চলবে।
 
 ## ৩. আসল Windows পরীক্ষা: lock, তারপর shutdown + ৩০ সেকেন্ডে cancel

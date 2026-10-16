@@ -8,7 +8,7 @@ from logging.handlers import RotatingFileHandler
 from .config import Settings
 
 _PATTERNS = [
-    (re.compile(r"sk-ant-[A-Za-z0-9_\-]+"), "sk-ant-***"),
+    (re.compile(r"sk-ant-[A-Za-z0-9_\-]+"), "sk-ant-***"),  # secret-scan:allow
     (re.compile(r"(?i)(bearer\s+)[A-Za-z0-9_\-\.=]+"), r"\1***"),
     (re.compile(r"(?i)(x-gateway-secret\W+)[^\s\"']+"), r"\1***"),
     (re.compile(r"(?i)(\"?(?:token|pin|secret|password|confirm_token)\"?\s*[:=]\s*\"?)[^\s\",}]+"),

@@ -10,3 +10,10 @@ dist/
 build/
 *.spec
 audit-*.csv
+
+config.json
+key.properties
+*.jks
+*.keystore
+.env.*
+!.env.example
