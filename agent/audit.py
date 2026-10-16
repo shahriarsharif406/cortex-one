@@ -15,15 +15,26 @@ SECRET_KEYS = {"token", "pin", "password", "secret", "confirm_token", "code"}
 
 
 def redact(params: dict[str, Any]) -> dict[str, Any]:
+    """Secret-named keys are masked; string values also pass through the log scrubber
+    (API keys, bearer tokens, 'pin: 1234' style text), whatever their key is called."""
+    from .logging_setup import scrub
+
     out: dict[str, Any] = {}
     for key, value in params.items():
         if key.lower() in SECRET_KEYS:
             out[key] = "***"
-        elif isinstance(value, str) and len(value) > 200:
-            out[key] = value[:200] + "..."
+        elif isinstance(value, str):
+            value = scrub(value)
+            out[key] = value[:200] + "..." if len(value) > 200 else value
         else:
             out[key] = value
     return out
+
+
+def _scrub(text: str) -> str:
+    from .logging_setup import scrub
+
+    return scrub(text)
 
 
 class AuditLog:
@@ -52,7 +63,7 @@ class AuditLog:
                     action,
                     json.dumps(redact(params), ensure_ascii=False, default=str)[:MAX_PARAMS_JSON],
                     status,
-                    detail[:500],
+                    _scrub(detail)[:500],
                 ),
             )
             self._count += 1

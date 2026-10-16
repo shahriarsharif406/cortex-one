@@ -13,6 +13,9 @@ _PATTERNS = [
     (re.compile(r"(?i)(x-gateway-secret\W+)[^\s\"']+"), r"\1***"),
     (re.compile(r"(?i)(\"?(?:token|pin|secret|password|confirm_token)\"?\s*[:=]\s*\"?)[^\s\",}]+"),
      r"\1***"),
+    # free text such as "my pin is 123456" / "পিন হলো 1234" (typed into an instruction)
+    (re.compile(r"(?i)\b((?:pin|passcode|password|passwd|otp|secret|token|code)|পিন|পাসওয়ার্ড|কোড)"
+                r"((?:\s+is|\s+হলো|\s+হল|\s*[:=])\s+)[^\s,;]+"), r"\1\2***"),
 ]
 
 

@@ -8,6 +8,8 @@ import time
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from . import __version__, screenshots
@@ -86,6 +88,13 @@ def create_app(settings: Settings | None = None,
     app = FastAPI(title="Cortex One Agent", docs_url=None, redoc_url=None,
                   openapi_url=None)
     app.state.engine = engine
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
+        # FastAPI's default body echoes the rejected input back; keep only where and why.
+        return JSONResponse(status_code=422, content={"detail": [
+            {"loc": list(e.get("loc", ())), "msg": str(e.get("msg", "invalid"))}
+            for e in exc.errors()]})
 
     def current_device(authorization: str | None = Header(default=None)) -> Device:
         token = None

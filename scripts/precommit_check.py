@@ -30,6 +30,8 @@ ASSIGN = re.compile(r"""(?ix)
     (?P<name>[A-Za-z_][\w.-]*)\s*(?:=|:)\s*(?P<q>["']?)(?P<value>[A-Za-z0-9_+/=~-]{32,})(?P=q)(?![\w+/=~-])""")
 ALLOW_MARK = "secret-scan:allow"
 TEST_DIRS = ("tests/",)
+# The scanner and its installer have to spell the patterns they look for.
+SELF_FILES = ("scripts/precommit_check.py", "scripts/install-git-hooks.ps1")
 
 
 def entropy(text: str) -> float:
@@ -53,7 +55,7 @@ def looks_random(value: str) -> bool:
 
 def scan_line(path: str, line: str) -> str | None:
     """Reason this line is not allowed, or None."""
-    if ALLOW_MARK in line:
+    if ALLOW_MARK in line or path.replace("\\", "/") in SELF_FILES:
         return None
     in_tests = path.replace("\\", "/").startswith(TEST_DIRS)
     if ANTHROPIC.search(line):

@@ -282,7 +282,10 @@ class Orchestrator:
             self._busy.release()
         result = task.result
         self._remember(task)
-        self.engine.audit.log(task.actor, "ai", "ai_task", {"instruction": task.instruction[:200]},
+        from .logging_setup import scrub
+
+        self.engine.audit.log(task.actor, "ai", "ai_task",
+                              {"instruction": scrub(task.instruction[:200])},
                               "ok" if result.ok else "failed",
                               result.stopped_reason or f"{len(result.steps)} step(s)")
         return result
