@@ -71,3 +71,12 @@ See `README.md` (what exists) and `NEEDS_ME.md` (what only the owner can do). Vo
 - `Engine.run` refuses high-risk actions on `via="ai"` as a second layer behind `ai.py`.
 - Phone app: plain http only to Tailscale (100.64/10, `*.ts.net`), loopback and the emulator host (`isPrivateOrTailscaleHost`); release builds need `android/key.properties`.
 - After a security review round, mutation-check: path confinement, confirmation requirement, AI high-risk block, emergency_stop exclusion, screenshot name/type/copy guards, TOTP replay guard, watcher restrictions.
+
+## v1.0.0-rc1 additions (rules to keep)
+- Coding-agent watcher (`agent/watch.py`, `settings.watch_rules`): rule `target` is a NAME from `watched_programs` (process rules) or `allowed_logs` (log rules), never a path; invalid rules are rejected, not evaluated. Alerts hold only the rule name + a fixed sentence (never log text, process lines or patterns); same rule is deduped and cooled down. `GET /watch` needs a device token; `GET /alerts` is power-only. Mutation-check: the target allowlist in `parse_rules`.
+- AI history (`ai_history` table, `GET /ai/history`, `ai-history`): instruction clipped to 200 chars and passed through `logging_setup.scrub`; retention `MAX_HISTORY_ROWS`. `ask --dry-run` must never build a client or read the key. Costs come only from owner-set `ai_price_per_mtok_*` (nothing hard-coded). API failures are mapped by class name/status to fixed bilingual sentences; never echo exception text or bodies.
+- `resolve_allowed` refuses path components that end in a dot or space. Screenshot names are ASCII-digit only.
+- `audit.redact` and audit `detail` pass through `scrub`; 422 responses do not echo input. `tests/test_secret_hygiene.py` greps every sink after a full session: extend it when adding a new sink or secret.
+- Secrets in git: `scripts/precommit_check.py` (hook via `scripts/install-git-hooks.ps1`, release check via `scripts/check.ps1`). Keep real keys out of tests too (short fake key-shaped strings are allowed under `tests/`, realistic-length ones are blocked).
+- Release: `scripts/make-release.ps1` packs tracked files only (`git archive`). `scripts/check.ps1` = tests + secret scan + doctor.
+- When mutation-checking an untracked file, commit first: `git checkout` cannot restore it.
