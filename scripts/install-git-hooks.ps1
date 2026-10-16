@@ -9,11 +9,12 @@
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string]$RepoPath = (Split-Path -Parent $PSScriptRoot),
+    [string]$RepoPath,
     [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
 $root    = Split-Path -Parent $PSScriptRoot
+if (-not $RepoPath) { $RepoPath = $root }
 $checker = (Join-Path $PSScriptRoot 'precommit_check.py') -replace '\\', '/'
 $venvPy  = Join-Path $root '.venv\Scripts\python.exe'
 $python  = if (Test-Path $venvPy) { $venvPy } else { (Get-Command python -ErrorAction Stop).Source }
