@@ -10,6 +10,7 @@ from .audit import AuditLog
 from .config import Settings
 from .db import Database
 from .power import AlertStore, critical_threshold
+from .watch import RuleWatcher
 from .security import ConfirmationStore, PairingManager, RateLimiter
 
 
@@ -23,6 +24,7 @@ class Engine:
         self.limiter = RateLimiter(settings.requests_per_minute)
         self.confirmations = ConfirmationStore(settings.confirm_ttl_seconds)
         self.alerts = AlertStore(self.db)
+        self.watch = RuleWatcher(self)       # rule watcher; serve starts its thread
 
     # Channels that only trusted in-process code may use. HTTP, SMS, the AI and
     # the CLI pass their own fixed ``via``, so a client can never reach this.

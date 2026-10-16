@@ -82,7 +82,8 @@ class Notifier:
     def notify(self, event: str, battery_percent: int | None, when: str) -> bool:
         """Best effort. Returns True when the request was accepted."""
         pct = "n/a" if battery_percent is None else f"{int(battery_percent)}%"
-        text = f"Cortex One: {event}, battery {pct}, {when}"
+        text = (f"Cortex One: {event}, {when}" if battery_percent is None
+                else f"Cortex One: {event}, battery {pct}, {when}")
         try:
             if self.kind == "ntfy":
                 req = urllib.request.Request(

@@ -34,6 +34,10 @@ def cmd_serve(settings: Settings, _args) -> int:
         from .power import PowerWatcher
 
         PowerWatcher(engine, notifier=Notifier.from_settings(settings)).start()
+    from .notify import Notifier as _Notifier
+
+    engine.watch.notifier = _Notifier.from_settings(settings)
+    engine.watch.start()
     app = create_app(settings, engine)
     # log_config=None keeps the rotating, redacting file handler we installed.
     uvicorn.run(app, host=settings.host, port=settings.port, log_config=None,

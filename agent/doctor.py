@@ -256,6 +256,19 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
         out.append(Check(WARN, "নোটিফায়ার টার্গেট অবৈধ; বন্ধ থাকবে", "notifier target is invalid; it stays off"))
     else:
         out.append(Check(OK, f"পুশ নোটিফায়ার কনফিগার করা আছে ({kind})", f"push notifier is configured ({kind})"))
+
+    # watch rules (names only; a rejected rule is never evaluated)
+    from .watch import parse_rules
+
+    rules, problems = parse_rules(settings)
+    if not settings.watch_rules and not problems:
+        out.append(Check(OK, "watch_rules নেই (কোডিং এজেন্ট ওয়াচার বন্ধ)",
+                         "no watch_rules (coding-agent watcher is off)"))
+    else:
+        for prob in problems:
+            out.append(Check(WARN, f"watch_rules সমস্যা: {prob}", f"watch_rules problem: {prob}"))
+        if rules:
+            out.append(Check(OK, f"{len(rules)}টি watch rule ঠিক আছে", f"{len(rules)} watch rule(s) valid"))
     return out
 
 

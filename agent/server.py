@@ -298,7 +298,12 @@ def create_app(settings: Settings | None = None,
     @app.get("/alerts")
     def alerts(limit: int = 20, device: Device = Depends(current_device)) -> list[dict]:
         """Recent power / battery alerts from the watcher (read-only)."""
-        return engine.alerts.recent(limit)
+        return engine.alerts.recent(limit, scope="power")
+
+    @app.get("/watch")
+    def watch(device: Device = Depends(current_device)) -> dict:
+        """Coding-agent watch rules with their status and recent rule alerts (read-only)."""
+        return engine.watch.snapshot()
 
     @app.get("/audit")
     def audit(limit: int = 50,

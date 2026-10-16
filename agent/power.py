@@ -78,12 +78,15 @@ class AlertStore:
             c.execute("DELETE FROM alerts WHERE id <= (SELECT MAX(id) FROM alerts) - ?",
                       (MAX_ALERTS,))
 
-    def recent(self, limit: int = 20) -> list[dict[str, Any]]:
+    def recent(self, limit: int = 20, scope: str | None = None) -> list[dict[str, Any]]:
+        """scope: None = everything, "power" = battery alerts, "watch" = rule alerts."""
         limit = max(1, min(int(limit), 100))
+        where = {None: "", "power": " WHERE kind NOT LIKE 'watch\\_%' ESCAPE '\\'",
+                 "watch": " WHERE kind LIKE 'watch\\_%' ESCAPE '\\'"}[scope]
         with self.db.conn() as c:
             rows = c.execute(
                 "SELECT id, ts, kind, battery_percent, plugged, message FROM alerts"
-                " ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+                + where + " ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         out = []
         for r in rows:
             d = dict(r)

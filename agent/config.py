@@ -86,6 +86,11 @@ class Settings:
     # What the watcher may do at critical battery on battery power:
     # "none" | "hibernate" | "lock". Never "shutdown".
     critical_action: str = "none"
+    # Coding-agent watcher: see agent/watch.py. Each rule is
+    # {name, kind: process_exit|log_stalled|log_pattern, target, minutes, pattern}.
+    watch_rules: list = field(default_factory=list)
+    watch_check_seconds: int = 30
+    watch_cooldown_seconds: int = 600
     # SMS authentication: "pin" (static PIN, no replay protection) or "totp".
     sms_mode: str = "pin"
 
