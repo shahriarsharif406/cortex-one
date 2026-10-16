@@ -15,7 +15,7 @@ from pathlib import Path
 from .actions import ActionError, resolve_allowed
 from .config import Settings
 
-NAME_RE = re.compile(r"^screenshot-\d{8}-\d{6}(?:-\d{1,3})?\.(png|jpg)$")
+NAME_RE = re.compile(r"^screenshot-[0-9]{8}-[0-9]{6}(?:-[0-9]{1,3})?\.(png|jpg)$")
 MAX_BYTES = 12 * 1024 * 1024        # larger files are refused, not streamed
 MAX_LISTED = 200
 MIN_WIDTH, MAX_WIDTH = 200, 2000

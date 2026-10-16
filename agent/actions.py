@@ -114,6 +114,10 @@ def _odd_windows_name(raw: str, resolved: Path) -> bool:
 def resolve_allowed(path: str, roots: list[Path]) -> Path:
     if not roots:
         raise ActionError("No folders are allowed yet. Set allowed_roots in config.json.")
+    # Windows drops trailing dots/spaces ('sub .' is 'sub', '.. ' is '..'), so the
+    # string we check and the folder the OS opens could differ. Refuse the ambiguity.
+    if any(c not in ("", ".", "..") and c != c.rstrip(" .") for c in re.split(r"[\\/]+", path)):
+        raise ActionError("That file name is not allowed.")
     try:
         p = Path(path).expanduser().resolve()
     except (OSError, RuntimeError, ValueError):
