@@ -50,6 +50,9 @@ abstract class CortexApi {
   Future<Capabilities> capabilities();
   Future<List<AlertEntry>> alerts({int limit = 20});
 
+  /// Coding-agent watch rules, their state and recent rule alerts.
+  Future<WatchSnapshot> watch();
+
   /// Newest-first names of the agent's screenshots.
   Future<List<ScreenshotInfo>> screenshots();
 
@@ -288,6 +291,10 @@ class HttpCortexApi implements CortexApi {
     for (final e in _list(await _send('GET', '/alerts?limit=$limit')))
       if (e is Map) AlertEntry.fromJson(Map<String, dynamic>.from(e)),
   ];
+
+  @override
+  Future<WatchSnapshot> watch() async =>
+      WatchSnapshot.fromJson(_obj(await _send('GET', '/watch')));
 
   @override
   Future<List<ScreenshotInfo>> screenshots() async {

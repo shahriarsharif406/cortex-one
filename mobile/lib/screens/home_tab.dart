@@ -7,6 +7,7 @@ import '../api/models.dart';
 import '../state/app_state.dart';
 import '../state/pending_controller.dart';
 import 'alerts_screen.dart';
+import 'watch_screen.dart';
 
 class HomeTab extends StatefulWidget {
   const HomeTab({
@@ -63,6 +64,10 @@ class _HomeTabState extends State<HomeTab> {
 
   void _openAlerts() => Navigator.of(context).push(
     MaterialPageRoute<void>(builder: (_) => AlertsScreen(api: widget.api)),
+  );
+
+  void _openWatch() => Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => WatchScreen(api: widget.api)),
   );
 
   @override
@@ -309,14 +314,22 @@ class _HomeTabState extends State<HomeTab> {
                 onTap: _openAlerts,
               ),
             ),
-          Align(
-            alignment: AlignmentDirectional.centerEnd,
-            child: TextButton.icon(
-              key: const Key('alerts_open'),
-              onPressed: _openAlerts,
-              icon: const Icon(Icons.bolt_outlined),
-              label: Text(s.t('alerts_open')),
-            ),
+          Wrap(
+            alignment: WrapAlignment.end,
+            children: [
+              TextButton.icon(
+                key: const Key('watch_open'),
+                onPressed: _openWatch,
+                icon: const Icon(Icons.visibility_outlined),
+                label: Text(s.t('watch_open')),
+              ),
+              TextButton.icon(
+                key: const Key('alerts_open'),
+                onPressed: _openAlerts,
+                icon: const Icon(Icons.bolt_outlined),
+                label: Text(s.t('alerts_open')),
+              ),
+            ],
           ),
           _statusCard(context),
           const SizedBox(height: 16),

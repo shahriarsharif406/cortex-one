@@ -37,6 +37,8 @@ class FakeApi implements CortexApi {
   List<AuditEntry> auditRows = [];
   List<AlertEntry> alertRows = [];
   Object? alertsError;
+  WatchSnapshot watchSnapshot = const WatchSnapshot();
+  Object? watchError;
   Object? screenshotError;
   Object? screenshotActionError;
   Uint8List screenshotPng = _tinyPng;
@@ -145,6 +147,13 @@ class FakeApi implements CortexApi {
     calls.add('alerts');
     if (alertsError != null) throw alertsError!;
     return List.of(alertRows);
+  }
+
+  @override
+  Future<WatchSnapshot> watch() async {
+    calls.add('watch');
+    if (watchError != null) throw watchError!;
+    return watchSnapshot;
   }
 
   @override

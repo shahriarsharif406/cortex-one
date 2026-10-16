@@ -206,6 +206,76 @@ class AlertEntry {
   );
 }
 
+/// One coding-agent watch rule and its current state (GET /watch).
+class WatchRule {
+  const WatchRule({
+    required this.name,
+    required this.kind,
+    required this.target,
+    required this.state,
+    this.minutes = 0,
+    this.lastAlert,
+  });
+
+  final String name;
+
+  /// process_exit | log_stalled | log_pattern
+  final String kind;
+  final String target;
+
+  /// running | waiting | exited | active | stalled | clear | matched | missing | error
+  final String state;
+  final int minutes;
+  final DateTime? lastAlert;
+
+  /// The rule is firing or its target is gone.
+  bool get isProblem =>
+      state == 'exited' ||
+      state == 'stalled' ||
+      state == 'matched' ||
+      state == 'error';
+
+  factory WatchRule.fromJson(Map<String, dynamic> j) => WatchRule(
+    name: (j['name'] ?? '').toString(),
+    kind: (j['kind'] ?? '').toString(),
+    target: (j['target'] ?? '').toString(),
+    state: (j['state'] ?? 'waiting').toString(),
+    minutes: (j['minutes'] as num?)?.toInt() ?? 0,
+    lastAlert: j['last_alert'] is num
+        ? DateTime.fromMillisecondsSinceEpoch(
+            ((j['last_alert'] as num) * 1000).round(),
+          )
+        : null,
+  );
+}
+
+/// Rules, config problems and recent rule alerts from GET /watch.
+class WatchSnapshot {
+  const WatchSnapshot({
+    this.rules = const [],
+    this.problems = const [],
+    this.alerts = const [],
+  });
+
+  final List<WatchRule> rules;
+  final List<String> problems;
+  final List<AlertEntry> alerts;
+
+  factory WatchSnapshot.fromJson(Map<String, dynamic> j) => WatchSnapshot(
+    rules: [
+      for (final e in (j['rules'] as List? ?? const []))
+        if (e is Map) WatchRule.fromJson(Map<String, dynamic>.from(e)),
+    ],
+    problems: [
+      for (final e in (j['problems'] as List? ?? const [])) e.toString(),
+    ],
+    alerts: [
+      for (final e in (j['alerts'] as List? ?? const []))
+        if (e is Map) AlertEntry.fromJson(Map<String, dynamic>.from(e)),
+    ],
+  );
+}
+
 /// A screenshot file the agent took (GET /screenshots).
 class ScreenshotInfo {
   const ScreenshotInfo({
