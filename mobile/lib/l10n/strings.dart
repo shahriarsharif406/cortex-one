@@ -20,6 +20,7 @@ class S {
 
   /// Clear, plain error text for the user (never a stack trace).
   String error(Object error) {
+    if (error is AuthDeclined) return t('auth_failed');
     if (error is ApiException) {
       final base = switch (error.kind) {
         ApiErrorKind.network => t('err_network'),
@@ -71,6 +72,174 @@ class S {
 }
 
 const Map<String, String> _bn = {
+  'state_online':
+      'অনলাইন',
+  'state_sleeping':
+      'ঘুমিয়ে আছে (সম্ভবত)',
+  'state_offline':
+      'অফলাইন',
+  'state_unknown':
+      'অজানা',
+  'reason_sleep':
+      'আপনি {t}-এ স্লিপ দিয়েছিলেন, তারপর আর সাড়া দেয়নি। ফোন বলতে পারে না এটা স্লিপে নাকি নেটওয়ার্ক নেই।',
+  'reason_hibernate':
+      'আপনি {t}-এ হাইবারনেট দিয়েছিলেন, তারপর আর সাড়া দেয়নি।',
+  'reason_shutdown':
+      'আপনি {t}-এ শাটডাউন দিয়েছিলেন। বন্ধ থাকলে ফোন থেকে সরাসরি জাগানো যায় না।',
+  'reason_restart':
+      'রিস্টার্ট চলছে হতে পারে ({t})। কয়েক মিনিট অপেক্ষা করুন।',
+  'reason_battery':
+      'শেষবার ব্যাটারি খুব কম ছিল এবং চার্জে ছিল না: সম্ভবত ব্যাটারি শেষ হয়ে বন্ধ হয়েছে।',
+  'reason_noanswer':
+      'সাড়া দিচ্ছে না: স্লিপ, বন্ধ, বা নেটওয়ার্ক/Tailscale সমস্যা: ফোন বলতে পারে না।',
+  'reason_never':
+      'এই ফোন থেকে এখনো একবারও সাড়া পায়নি।',
+  'last_seen':
+      'শেষ সাড়া: {t}',
+  'seen_never':
+      'কখনো সাড়া পায়নি',
+  'battery_line':
+      'ব্যাটারি {p}% ({c})',
+  'link_tailscale':
+      'লিংক: Tailscale',
+  'link_lan':
+      'লিংক: বাসার Wi-Fi (LAN)',
+  'link_sim':
+      'লিংক: SIM মোবাইল ডেটা (ডেটা-সেভার)',
+  'link_none':
+      'লিংক: এখনো সংযোগ হয়নি',
+  'power_title':
+      'পাওয়ার',
+  'power_note':
+      'ঝুঁকিপূর্ণ বোতামে চাপলে কী হবে দেখাবে, তারপর ফোনের আঙুলের ছাপ/পিন লাগবে।',
+  'p_wake':
+      'জাগান',
+  'p_sleep':
+      'স্লিপ',
+  'p_hibernate':
+      'হাইবারনেট',
+  'p_shutdown':
+      'শাটডাউন',
+  'p_restart':
+      'রিস্টার্ট',
+  'p_lock':
+      'লক',
+  'will_sleep':
+      'কম্পিউটার এখনই স্লিপে যাবে। আবার জাগাতে লাগবে: অন্য কম্পিউটার থেকে Wake-on-LAN, Cortex Wake, অথবা পাওয়ার বোতাম। Wi-Fi দিয়ে জাগানো সব কম্পিউটারে চলে না।',
+  'will_hibernate':
+      'কম্পিউটার সেশন সেভ করে বন্ধ হবে (হাইবারনেট)। জাগাতে সাধারণত পাওয়ার বোতাম লাগে; নেটওয়ার্ক দিয়ে জাগানো প্রায় চলে না।',
+  'will_shutdown':
+      'কম্পিউটার কিছুক্ষণ পরে (ডিফল্ট ৩০ সেকেন্ড) সম্পূর্ণ বন্ধ হবে। পরে ফোন থেকে জাগানো যাবে না (Wake-on-LAN বা Cortex Wake না থাকলে)। অসেভ কাজ হারাবে।',
+  'will_restart':
+      'কম্পিউটার কিছুক্ষণ পরে (ডিফল্ট ৩০ সেকেন্ড) রিস্টার্ট হবে। অসেভ কাজ হারাবে।',
+  'power_confirm_btn':
+      'হ্যাঁ, করুন',
+  'auth_reason_power':
+      'কম্পিউটারের পাওয়ার কমান্ড নিশ্চিত করতে আপনার পরিচয় যাচাই করুন',
+  'auth_reason_pending':
+      'অনুরোধটি নিশ্চিত করতে আপনার পরিচয় যাচাই করুন',
+  'auth_failed':
+      'পরিচয় যাচাই হয়নি, তাই কিছু করা হয়নি। ফোনে স্ক্রিন লক (পিন/ফিঙ্গারপ্রিন্ট) চালু আছে কিনা দেখুন।',
+  'power_done':
+      'পাঠানো হয়েছে',
+  'act_sleep':
+      'স্লিপ',
+  'confirm_sleep':
+      'স্লিপ নিশ্চিত করুন',
+  'act_hibernate':
+      'হাইবারনেট',
+  'confirm_hibernate':
+      'হাইবারনেট নিশ্চিত করুন',
+  'wake_title':
+      'কম্পিউটার জাগানোর উপায়',
+  'wake_intro':
+      'বন্ধ কম্পিউটার ফোনের কথা শুনতে পায় না। নিচের উপায়গুলো আলাদা সাহায্যকারী লাগে; কোনোটাই "জেগেছে" বলে নিশ্চিত করতে পারে না।',
+  'wake_via':
+      '{name}-এর মাধ্যমে জাগান',
+  'wake_via_needs':
+      'লাগবে: {name} চালু ও অনলাইন, একই বাসার নেটওয়ার্কে; এই কম্পিউটারের BIOS/ড্রাইভারে Wake-on-LAN চালু। স্লিপ থেকে মাঝে মাঝে চলে; পুরো বন্ধ বা হাইবারনেট থেকে সাধারণত শুধু তারের (Ethernet) সংযোগে।',
+  'wake_gateway':
+      'Cortex Wake (পাওয়ার বোতাম রোবট)',
+  'wake_gateway_needs':
+      'লাগবে: গেটওয়ে ফোনে ব্যাটারি, SIM-এ ব্যালেন্স ও সিগন্যাল, ESP32 + সার্ভো ঠিকমতো বসানো, ল্যাপটপে চার্জ। হার্ডওয়্যার পরীক্ষা করা হয়নি। টাচ বোতামে সার্ভো কাজ নাও করতে পারে।',
+  'wake_sms':
+      'SMS পাঠান',
+  'wake_sms_needs':
+      'লাগবে: গেটওয়ে ফোনের নম্বর (SMS ট্যাবে দিন)। SMS অ্যাপ খুলবে "ON " লেখা অবস্থায়; আপনি শেষে অথেনটিকেটরের ৬ অঙ্কের কোড নিজে লিখে পাঠাবেন। অ্যাপ কোডটি কখনো জানে না।',
+  'wake_none':
+      'কোনো জাগানোর উপায় সেট করা নেই। কম্পিউটারের তথ্য বদলে "যে কম্পিউটার জাগাবে" বা Cortex Wake দিন।',
+  'wake_sent':
+      'জাগানোর সংকেত পাঠানো হয়েছে। এক মিনিট পরে অবস্থা দেখুন; এটা নিশ্চিত করে না যে জেগেছে।',
+  'wake_failed':
+      'জাগানোর সংকেত যায়নি',
+  'wake_online_already':
+      'কম্পিউটার তো অনলাইনই আছে।',
+  'wake_no_sms':
+      'আগে SMS ট্যাবে গেটওয়ে ফোনের নম্বর দিন।',
+  'wake_laptop_on':
+      'সেন্সর বলছে ল্যাপটপ চালু আছে, তাই বোতাম চাপা হয়নি।',
+  'wake_force_q':
+      'ল্যাপটপের অবস্থা জানা নেই। তবুও পাওয়ার বোতাম চাপবেন? চালু ল্যাপটপে চাপলে স্লিপ বা শাটডাউন হতে পারে।',
+  'computers_title':
+      'আমার কম্পিউটার',
+  'computers_add':
+      'কম্পিউটার যোগ করুন',
+  'computers_empty':
+      'কোনো কম্পিউটার নেই',
+  'computer_edit':
+      'কম্পিউটারের তথ্য',
+  'computer_name':
+      'নাম',
+  'computer_endpoints':
+      'ঠিকানা (প্রথমটি আগে চেষ্টা হবে): Tailscale, তারপর LAN',
+  'computer_endpoints_hint':
+      'প্রতি লাইনে একটি, যেমন 100.64.0.9:8765',
+  'computer_lan_ok':
+      'এটা আমার নিজের বাসার নেটওয়ার্ক (LAN ঠিকানায় টোকেন এনক্রিপ্ট ছাড়া যায়, বুঝেছি)',
+  'computer_wake_via':
+      'যে কম্পিউটার একে জাগাবে',
+  'computer_wake_via_none':
+      'কেউ না',
+  'computer_gateway_addr':
+      'Cortex Wake গেটওয়ের ঠিকানা (ঐচ্ছিক)',
+  'computer_gateway_token':
+      'গেটওয়ের টোকেন (ঐচ্ছিক)',
+  'computer_rustdesk_id':
+      'RustDesk ID (পাসওয়ার্ড নয়)',
+  'computer_remove_confirm':
+      'এই কম্পিউটারটি এই ফোন থেকে সরাবেন?',
+  'save':
+      'সেভ',
+  'server_lan_needs_ok':
+      'এটি বাসার LAN ঠিকানা। সাধারণ http এনক্রিপ্ট করা নয়; নিজের বাসার নেটওয়ার্ক হলে নিচের ঘরে টিক দিন।',
+  'pair_name_label':
+      'কম্পিউটারের নাম (ঐচ্ছিক)',
+  'pair_lan_label':
+      'দ্বিতীয় ঠিকানা: বাসার LAN IP (ঐচ্ছিক)',
+  'pair_more':
+      'আরও অপশন',
+  'switch_computer':
+      'কম্পিউটার বদলান',
+  'ds_title':
+      'ডেটা-সেভার',
+  'ds_auto':
+      'স্বয়ংক্রিয়',
+  'ds_on':
+      'চালু',
+  'ds_off':
+      'বন্ধ',
+  'ds_note':
+      'চালু থাকলে স্ক্রিনশট ছোট (কম মান) আসে এবং নিজে নিজে রিফ্রেশ বন্ধ থাকে। স্বয়ংক্রিয় মানে ফোন SIM ডেটায় থাকলে চালু।',
+  'ds_active':
+      'ডেটা-সেভার এখন চালু',
+  'voice_offline_title':
+      'ইন্টারনেট ছাড়া ভয়েস',
+  'voice_offline_body':
+      'ইন্টারনেট না থাকলে ফোনের নিজস্ব স্পিচ রিকগনিশন লাগে। বাংলা অফলাইন প্যাক নামাতে: ফোনের Settings → Google → Settings for Google apps → Search, Assistant & Voice → Voice → Offline speech recognition → বাংলা (বাংলাদেশ) ডাউনলোড করুন। (মেনুর নাম ফোনভেদে একটু আলাদা হতে পারে।) বলা কথা বাক্সে আসবে; আপনি ঠিক করে নিজে "পাঠান" চাপবেন।',
+  'voice_offline_pref':
+      'অফলাইন স্পিচ ব্যবহার করুন',
+  'voice_offline_help':
+      'অফলাইন ভয়েস সেটআপ',
   'app_title': 'Cortex One',
   // pairing
   'pair_title': 'ল্যাপটপের সাথে যুক্ত করুন',
@@ -268,6 +437,174 @@ const Map<String, String> _bn = {
 };
 
 const Map<String, String> _en = {
+  'state_online':
+      'Online',
+  'state_sleeping':
+      'Probably asleep',
+  'state_offline':
+      'Offline',
+  'state_unknown':
+      'Unknown',
+  'reason_sleep':
+      'You put it to sleep at {t}, and it has not answered since. The phone cannot tell sleep from a dead network.',
+  'reason_hibernate':
+      'You hibernated it at {t}, and it has not answered since.',
+  'reason_shutdown':
+      'You shut it down at {t}. A computer that is off cannot be woken from the phone alone.',
+  'reason_restart':
+      'It may be restarting ({t}). Wait a few minutes.',
+  'reason_battery':
+      'Last time its battery was very low and not charging: it has probably run out and switched off.',
+  'reason_noanswer':
+      'Not answering: asleep, off, or a network/Tailscale problem. The phone cannot tell which.',
+  'reason_never':
+      'This phone has never heard from it yet.',
+  'last_seen':
+      'Last seen: {t}',
+  'seen_never':
+      'Never seen',
+  'battery_line':
+      'Battery {p}% ({c})',
+  'link_tailscale':
+      'Link: Tailscale',
+  'link_lan':
+      'Link: home Wi-Fi (LAN)',
+  'link_sim':
+      'Link: SIM mobile data (data-saver)',
+  'link_none':
+      'Link: not connected yet',
+  'power_title':
+      'Power',
+  'power_note':
+      'Risky buttons first show exactly what will happen, then ask for your fingerprint or phone PIN.',
+  'p_wake':
+      'Wake',
+  'p_sleep':
+      'Sleep',
+  'p_hibernate':
+      'Hibernate',
+  'p_shutdown':
+      'Shut down',
+  'p_restart':
+      'Restart',
+  'p_lock':
+      'Lock',
+  'will_sleep':
+      'The computer goes to sleep right now. To wake it again you need: Wake-on-LAN from another computer, Cortex Wake, or its power button. Waking over Wi-Fi does not work on every computer.',
+  'will_hibernate':
+      'The computer saves its session and powers down (hibernate). Waking it normally needs the power button; waking over the network almost never works.',
+  'will_shutdown':
+      'The computer shuts down completely after a short delay (30 seconds by default). You cannot wake it from the phone afterwards (unless you have Wake-on-LAN or Cortex Wake). Unsaved work is lost.',
+  'will_restart':
+      'The computer restarts after a short delay (30 seconds by default). Unsaved work is lost.',
+  'power_confirm_btn':
+      'Yes, do it',
+  'auth_reason_power':
+      'Verify it is you to confirm this power command',
+  'auth_reason_pending':
+      'Verify it is you to confirm this request',
+  'auth_failed':
+      'Identity was not verified, so nothing was done. Check that the phone has a screen lock (PIN/fingerprint).',
+  'power_done':
+      'Sent',
+  'act_sleep':
+      'Sleep',
+  'confirm_sleep':
+      'Confirm sleep',
+  'act_hibernate':
+      'Hibernate',
+  'confirm_hibernate':
+      'Confirm hibernate',
+  'wake_title':
+      'Ways to wake the computer',
+  'wake_intro':
+      'A computer that is off cannot hear the phone. Each way below needs a separate helper, and none can confirm that it really woke up.',
+  'wake_via':
+      'Wake via {name}',
+  'wake_via_needs':
+      'Needs: {name} is on and online, on the same home network; Wake-on-LAN enabled in this computer\'s BIOS/driver. It sometimes works from Sleep; from full shutdown or hibernate it usually only works on a wired (Ethernet) connection.',
+  'wake_gateway':
+      'Cortex Wake (power-button robot)',
+  'wake_gateway_needs':
+      'Needs: the gateway phone has battery, the SIM has balance and signal, the ESP32 + servo are mounted correctly, and the laptop battery has charge. Untested hardware. A touch power button may not work with a servo.',
+  'wake_sms':
+      'Send an SMS',
+  'wake_sms_needs':
+      'Needs: the gateway phone\'s number (set it on the SMS tab). The SMS app opens with "ON " typed; you add the 6-digit authenticator code yourself and send. The app never knows the code.',
+  'wake_none':
+      'No wake method is set up. Edit the computer and add "wake via" or Cortex Wake.',
+  'wake_sent':
+      'Wake signal sent. Check the status in a minute; this does not prove it woke up.',
+  'wake_failed':
+      'The wake signal did not go through',
+  'wake_online_already':
+      'The computer is already online.',
+  'wake_no_sms':
+      'First enter the gateway phone number on the SMS tab.',
+  'wake_laptop_on':
+      'The sensor says the laptop is ON, so the button was not pressed.',
+  'wake_force_q':
+      'The laptop state is unknown. Press the power button anyway? On a running laptop this may sleep or shut it down.',
+  'computers_title':
+      'My computers',
+  'computers_add':
+      'Add a computer',
+  'computers_empty':
+      'No computers yet',
+  'computer_edit':
+      'Computer details',
+  'computer_name':
+      'Name',
+  'computer_endpoints':
+      'Addresses (tried in order): Tailscale first, then LAN',
+  'computer_endpoints_hint':
+      'one per line, e.g. 100.64.0.9:8765',
+  'computer_lan_ok':
+      'This is my own home network (a LAN address sends the token unencrypted; I understand)',
+  'computer_wake_via':
+      'Computer that wakes this one',
+  'computer_wake_via_none':
+      'None',
+  'computer_gateway_addr':
+      'Cortex Wake gateway address (optional)',
+  'computer_gateway_token':
+      'Gateway token (optional)',
+  'computer_rustdesk_id':
+      'RustDesk ID (never the password)',
+  'computer_remove_confirm':
+      'Remove this computer from this phone?',
+  'save':
+      'Save',
+  'server_lan_needs_ok':
+      'That is a home-LAN address. Plain http is not encrypted: tick the box below only if it is your own network.',
+  'pair_name_label':
+      'Computer name (optional)',
+  'pair_lan_label':
+      'Second address: home LAN IP (optional)',
+  'pair_more':
+      'More options',
+  'switch_computer':
+      'Switch computer',
+  'ds_title':
+      'Data saver',
+  'ds_auto':
+      'Auto',
+  'ds_on':
+      'On',
+  'ds_off':
+      'Off',
+  'ds_note':
+      'When on, screenshots arrive small (low quality) and automatic refresh stops. Auto means on while the phone is on SIM mobile data.',
+  'ds_active':
+      'Data saver is on',
+  'voice_offline_title':
+      'Voice without internet',
+  'voice_offline_body':
+      'Without internet the phone\'s own speech recognition is needed. To get the Bangla offline pack: phone Settings → Google → Settings for Google apps → Search, Assistant & Voice → Voice → Offline speech recognition → download Bengali (Bangladesh). (Menu names differ a little between phones.) Spoken words appear in the box; you edit them and press Send yourself.',
+  'voice_offline_pref':
+      'Use offline speech',
+  'voice_offline_help':
+      'Offline voice setup',
   'app_title': 'Cortex One',
   'pair_title': 'Connect to your laptop',
   'pair_help':

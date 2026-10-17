@@ -47,12 +47,21 @@ class _ScreenViewState extends State<ScreenView> {
       _error = null;
     });
     try {
-      final out = await widget.api.runAction('take_screenshot');
+      final out = await widget.api.runAction(
+        'take_screenshot',
+        app.dataSaver ? const {'quality': 'low'} : const {},
+      );
       final file = out.data['file'];
       if (!out.ok || file is! String) {
         throw ApiException(ApiErrorKind.unavailable, detail: out.message);
       }
-      final bytes = await widget.api.screenshotBytes(file, width: 1000);
+      // data-saver (on the SIM link, or switched on): small low-quality JPEG
+      final saver = app.dataSaver;
+      final bytes = await widget.api.screenshotBytes(
+        file,
+        width: saver ? 640 : 1000,
+        lowData: saver,
+      );
       if (!mounted) return;
       setState(() {
         _image = bytes;
@@ -71,6 +80,8 @@ class _ScreenViewState extends State<ScreenView> {
   }
 
   void _setAuto(bool on) {
+    // data-saver: no automatic refresh, only the Refresh button
+    if (on && AppScope.read(context).dataSaver) on = false;
     _timer?.cancel();
     _timer = null;
     if (on) {

@@ -413,7 +413,14 @@ void main() {
       await h.state.setThemeMode(ThemeMode.dark);
       await h.state.setLang('en');
       await tester.pump();
-      expect(h.prefs.values, {'theme': 'dark', 'lang': 'en'});
+      final plain = Map.of(h.prefs.values);
+      // 'seen_<id>' is the last-seen note of a computer (time + battery, no address, no token)
+      final seen = plain.keys.where((k) => k.startsWith('seen_')).toList();
+      for (final k in seen) {
+        expect(plain.remove(k), isNot(contains('stored-token')));
+        expect(h.prefs.values[k], isNot(contains('100.64')));
+      }
+      expect(plain, {'theme': 'dark', 'lang': 'en'});
       expect(find.text('EMERGENCY STOP'), findsOneWidget);
     });
 

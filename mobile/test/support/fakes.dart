@@ -3,6 +3,10 @@ import 'dart:typed_data';
 import 'dart:ui' show Size;
 
 import 'package:cortex_one/api/api_client.dart';
+import 'package:cortex_one/api/health.dart';
+import 'package:cortex_one/api/wake_gateway_client.dart';
+import 'package:cortex_one/state/computer.dart';
+import 'package:cortex_one/state/device_services.dart';
 import 'package:cortex_one/api/models.dart';
 import 'package:cortex_one/app.dart';
 import 'package:cortex_one/state/app_state.dart';
@@ -44,6 +48,22 @@ class FakeApi implements CortexApi {
   Uint8List screenshotPng = _tinyPng;
   int shotCounter = 0;
 
+  // ---- session 2: health, two-step power actions, data-saver screenshots
+  Health healthAnswer = const Health(
+    computerId: 'abc123',
+    computerName: 'Laptop',
+    version: '1.1.0-rc1',
+    batteryPercent: 77,
+    plugged: true,
+  );
+  Object? healthError;
+  int healthCalls = 0;
+  final List<String> requested = [];
+  final List<String> confirmed = [];
+  final List<Map<String, String>> confirmedParams = [];
+  Object? requestError;
+  final List<bool> screenshotLow = [];
+
   @override
   Future<String> pair(String code, String deviceName) async {
     calls.add('pair:$code');
@@ -58,6 +78,9 @@ class FakeApi implements CortexApi {
   ]) async {
     calls.add('action:$name');
     actionParams.add(params);
+    if (name == 'wake_computer') {
+      return ActionOutcome(ok: true, message: 'Wake packet sent', data: params);
+    }
     if (name == 'system_info') {
       return ActionOutcome(ok: true, message: 'ok', data: info);
     }
@@ -160,7 +183,47 @@ class FakeApi implements CortexApi {
   Future<List<ScreenshotInfo>> screenshots() async => const [];
 
   @override
-  Future<Uint8List> screenshotBytes(String name, {int? width}) async {
+  Future<Health> health() async {
+    healthCalls++;
+    if (healthError != null) throw healthError!;
+    return healthAnswer;
+  }
+
+  @override
+  Future<ActionRequestResult> requestAction(
+    String name, [
+    Map<String, String> params = const {},
+  ]) async {
+    requested.add(name);
+    if (requestError != null) throw requestError!;
+    if (name == 'lock') {
+      return const ActionRequestResult.done(
+        ActionOutcome(ok: true, message: 'Locked.'),
+      );
+    }
+    return ActionRequestResult.needsConfirm(
+      ConfirmTicket(token: 'ticket-$name', expiresIn: 60),
+    );
+  }
+
+  @override
+  Future<ActionOutcome> confirmAction(
+    String name,
+    String confirmToken, [
+    Map<String, String> params = const {},
+  ]) async {
+    confirmed.add('$name:$confirmToken');
+    confirmedParams.add(params);
+    return ActionOutcome(ok: true, message: '$name accepted');
+  }
+
+  @override
+  Future<Uint8List> screenshotBytes(
+    String name, {
+    int? width,
+    bool lowData = false,
+  }) async {
+    screenshotLow.add(lowData);
     calls.add('shot:$name:${width ?? 0}');
     if (screenshotError != null) throw screenshotError!;
     return screenshotPng;
@@ -171,6 +234,7 @@ class FakeVoice implements VoiceInput {
   bool available = true;
   bool listening = false;
   String? localeUsed;
+  bool onDeviceUsed = false;
   void Function(String words, bool finished)? sink;
 
   @override
@@ -179,9 +243,11 @@ class FakeVoice implements VoiceInput {
   @override
   Future<void> listen(
     String localeId,
-    void Function(String, bool) onWords,
-  ) async {
+    void Function(String, bool) onWords, {
+    bool onDevice = false,
+  }) async {
     listening = true;
+    onDeviceUsed = onDevice;
     localeUsed = localeId;
     sink = onWords;
   }
@@ -193,14 +259,77 @@ class FakeVoice implements VoiceInput {
   bool get isListening => listening;
 }
 
+class FakeBiometric implements BiometricGate {
+  bool allow = true;
+  final List<String> reasons = [];
+
+  @override
+  Future<bool> authenticate(String reason) async {
+    reasons.add(reason);
+    return allow;
+  }
+}
+
+class FakeLink implements LinkMonitor {
+  LinkSnapshot now = const LinkSnapshot();
+  final _ctl = StreamController<LinkSnapshot>.broadcast();
+
+  void emit(LinkSnapshot s) {
+    now = s;
+    _ctl.add(s);
+  }
+
+  @override
+  Future<LinkSnapshot> read() async => now;
+
+  @override
+  Stream<LinkSnapshot> get changes => _ctl.stream;
+}
+
+class FakeGateway implements WakeGatewayClient {
+  GatewayResult statusAnswer = const GatewayResult(
+    ok: true,
+    message: 'ok',
+    laptopState: 'off',
+  );
+  GatewayResult pressAnswer = const GatewayResult(ok: true, message: 'pressed');
+  final List<String> calls = [];
+
+  @override
+  Future<GatewayResult> status(WakeGateway gateway) async {
+    calls.add('status');
+    return statusAnswer;
+  }
+
+  @override
+  Future<GatewayResult> press(WakeGateway gateway, {bool force = false}) async {
+    calls.add('press:force=$force');
+    return pressAnswer;
+  }
+}
+
 class Harness {
-  Harness({FakeApi? api, FakeVoice? voice, bool paired = true})
-    : api = api ?? FakeApi(),
+  Harness({
+    FakeApi? api,
+    FakeVoice? voice,
+    bool paired = true,
+    FakeBiometric? biometric,
+    FakeLink? link,
+    FakeGateway? gateway,
+    List<Computer>? computers,
+    Map<String, FakeApi>? apis,
+  }) : api = api ?? FakeApi(),
+      apis = apis ?? {},
       voice = voice ?? FakeVoice(),
+      biometric = biometric ?? FakeBiometric(),
+      link = link ?? FakeLink(),
+      gateway = gateway ?? FakeGateway(),
       secrets = MemorySecretStore(),
       prefs = MemoryPrefsStore(),
       launched = [] {
-    if (paired) {
+    if (computers != null) {
+      secrets.values['computers'] = encodeComputers(computers);
+    } else if (paired) {
       secrets.values['device_token'] = 'stored-token';
       secrets.values['server_address'] = 'http://100.64.0.9:8765';
     }
@@ -209,9 +338,13 @@ class Harness {
       prefs: prefs,
       apiFactory: (baseUrl, token) {
         factoryCalls.add((baseUrl, token));
-        return this.api;
+        return this.apis[baseUrl] ?? this.api;
       },
       voice: this.voice,
+      biometrics: this.biometric,
+      links: this.link,
+      gateway: this.gateway,
+      monitorEverySeconds: 0, // no periodic timer in widget tests
       launchUri: (uri) async {
         launched.add(uri);
         return launchResult;
@@ -220,7 +353,13 @@ class Harness {
   }
 
   final FakeApi api;
+
+  /// Different fake per address (for failover and for several computers).
+  final Map<String, FakeApi> apis;
   final FakeVoice voice;
+  final FakeBiometric biometric;
+  final FakeLink link;
+  final FakeGateway gateway;
   final MemorySecretStore secrets;
   final MemoryPrefsStore prefs;
   final List<Uri> launched;
@@ -231,6 +370,7 @@ class Harness {
   Future<void> pump(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(420, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(state.dispose);
     await state.load();
     await tester.pumpWidget(CortexApp(state: state));
     await tester.pump();

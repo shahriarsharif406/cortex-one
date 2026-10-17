@@ -142,12 +142,16 @@ class _PendingCardState extends State<PendingCard> {
     final title = switch (item.action) {
       'shutdown' => s.t('act_shutdown'),
       'restart' => s.t('act_restart'),
+      'sleep' => s.t('act_sleep'),
+      'hibernate' => s.t('act_hibernate'),
       'run_script' => s.t('act_run_script'),
       _ => s.t('act_other'),
     };
     final confirmLabel = switch (item.action) {
       'shutdown' => s.t('confirm_shutdown'),
       'restart' => s.t('confirm_restart'),
+      'sleep' => s.t('confirm_sleep'),
+      'hibernate' => s.t('confirm_hibernate'),
       'run_script' => s.t('confirm_run_script'),
       _ => s.t('confirm_default'),
     };
@@ -243,6 +247,12 @@ class _PendingCardState extends State<PendingCard> {
                     onPressed: (_busy || _expired)
                         ? null
                         : () => _run(() async {
+                            // the phone's own biometric / screen lock comes first
+                            if (!await AppScope.read(
+                              context,
+                            ).authorize('auth_reason_pending')) {
+                              throw const AuthDeclined();
+                            }
                             final out = await widget.controller.confirm(item);
                             if (!out.ok) {
                               throw ApiException(

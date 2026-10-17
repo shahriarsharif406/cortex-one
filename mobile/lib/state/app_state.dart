@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api/api_client.dart';
 import '../api/failover_api.dart';
+import '../api/wake_gateway_client.dart';
 import '../l10n/strings.dart';
 import '../storage/stores.dart';
 import '../voice/voice_input.dart';
@@ -33,11 +34,13 @@ class AppState extends ChangeNotifier {
     Future<bool> Function(Uri uri)? launchUri,
     BiometricGate? biometrics,
     LinkMonitor? links,
+    WakeGatewayClient? gateway,
     this.attemptTimeout = const Duration(seconds: 5),
     this.monitorEverySeconds = 20,
   }) : launchUri = launchUri ?? _defaultLaunch,
        biometrics = biometrics ?? LocalAuthGate(),
-       links = links ?? NoLinkMonitor();
+       links = links ?? NoLinkMonitor(),
+       gateway = gateway ?? HttpWakeGatewayClient();
 
   static const _kComputers = 'computers';
   // Older single-computer builds stored these two. They are migrated, then deleted.
@@ -51,6 +54,7 @@ class AppState extends ChangeNotifier {
   final Future<bool> Function(Uri uri) launchUri;
   final BiometricGate biometrics;
   final LinkMonitor links;
+  final WakeGatewayClient gateway;
   final Duration attemptTimeout;
   final int monitorEverySeconds;
 
@@ -62,11 +66,18 @@ class AppState extends ChangeNotifier {
   int _current = 0;
   final Map<String, FailoverApi> _apis = {};
   final Map<String, ComputerMonitor> _monitors = {};
-  StreamSubscription<bool>? _linkSub;
+  StreamSubscription<LinkSnapshot>? _linkSub;
 
   /// 'auto' (on while the phone is on mobile data), 'on', or 'off'.
   String dataSaverMode = 'auto';
   bool onMobile = false;
+
+  /// The phone itself has no network (so voice typing must run on-device).
+  bool phoneOffline = false;
+
+  /// 'auto' (on-device only when the phone has no network) or 'on'.
+  String voiceOfflineMode = 'auto';
+  bool get voiceOnDevice => voiceOfflineMode == 'on' || phoneOffline;
 
   /// A message key shown on the pairing screen (e.g. after the token was revoked).
   String? notice;
@@ -176,9 +187,13 @@ class AppState extends ChangeNotifier {
         );
       }
     }
-    onMobile = await links.isOnMobile();
-    _linkSub ??= links.onMobileChanges.listen((mobile) {
-      onMobile = mobile;
+    voiceOfflineMode = (await prefs.get('voice_offline')) == 'on' ? 'on' : 'auto';
+    final snap = await links.read();
+    onMobile = snap.onMobile;
+    phoneOffline = snap.offline;
+    _linkSub ??= links.changes.listen((snap) {
+      onMobile = snap.onMobile;
+      phoneOffline = snap.offline;
       _applyDataSaver();
       notifyListeners();
     });
@@ -203,7 +218,9 @@ class AppState extends ChangeNotifier {
     ).join();
   }
 
-  Future<void> _save() => secrets.write(_kComputers, encodeComputers(computers));
+  Future<void> _save() => computers.isEmpty
+      ? secrets.delete(_kComputers)
+      : secrets.write(_kComputers, encodeComputers(computers));
 
   // ---------------------------------------------------------------- pairing
   /// Exchanges the pairing code for a token and stores the new computer in the secure store.
@@ -342,6 +359,12 @@ class AppState extends ChangeNotifier {
     dataSaverMode = mode == 'on' || mode == 'off' ? mode : 'auto';
     await prefs.set('data_saver', dataSaverMode);
     _applyDataSaver();
+    notifyListeners();
+  }
+
+  Future<void> setVoiceOffline(bool on) async {
+    voiceOfflineMode = on ? 'on' : 'auto';
+    await prefs.set('voice_offline', voiceOfflineMode);
     notifyListeners();
   }
 

@@ -7,10 +7,14 @@ abstract class VoiceInput {
   Future<bool> init();
 
   /// [localeId] is `bn_BD` or `en_US`. [onWords] receives the text so far.
+  ///
+  /// [onDevice] asks Android to recognise on the phone itself (works without internet when
+  /// the language pack, e.g. Bangla, is downloaded).
   Future<void> listen(
     String localeId,
-    void Function(String words, bool finished) onWords,
-  );
+    void Function(String words, bool finished) onWords, {
+    bool onDevice = false,
+  });
   Future<void> stop();
   bool get isListening;
 }
@@ -33,13 +37,15 @@ class SpeechVoiceInput implements VoiceInput {
   @override
   Future<void> listen(
     String localeId,
-    void Function(String words, bool finished) onWords,
-  ) async {
+    void Function(String words, bool finished) onWords, {
+    bool onDevice = false,
+  }) async {
     await _stt.listen(
       listenOptions: SpeechListenOptions(
         localeId: localeId,
         partialResults: true,
         cancelOnError: true,
+        onDevice: onDevice,
       ),
       onResult: (r) => onWords(r.recognizedWords, r.finalResult),
     );

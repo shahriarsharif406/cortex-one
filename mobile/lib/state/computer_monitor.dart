@@ -56,7 +56,7 @@ class ComputerMonitor extends ChangeNotifier {
 
   void _schedule() {
     _timer?.cancel();
-    if (!autoRefresh || _disposed) return;
+    if (!autoRefresh || _disposed || everySeconds <= 0) return;
     _timer = Timer.periodic(Duration(seconds: everySeconds), (_) => refresh());
   }
 

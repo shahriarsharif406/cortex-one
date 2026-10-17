@@ -33,6 +33,14 @@ class ApiException implements Exception {
   String toString() => 'ApiException($kind, $statusCode)';
 }
 
+/// The owner did not pass the phone's biometric / screen-lock check: nothing was sent.
+class AuthDeclined implements Exception {
+  const AuthDeclined();
+
+  @override
+  String toString() => 'AuthDeclined';
+}
+
 /// What the screens use. Tests plug in a fake; the app uses [HttpCortexApi].
 abstract class CortexApi {
   /// Exchanges a 6-digit pairing code for a device token (stored by the caller).

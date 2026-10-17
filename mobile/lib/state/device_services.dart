@@ -31,10 +31,29 @@ class LocalAuthGate implements BiometricGate {
   }
 }
 
-/// Is the phone on mobile data (the SIM)? Used for the automatic data-saver.
+/// What the phone's own connection looks like right now.
+class LinkSnapshot {
+  const LinkSnapshot({this.onMobile = false, this.offline = false});
+
+  /// On mobile data (the SIM) and not on Wi-Fi/Ethernet: the automatic data-saver trigger.
+  final bool onMobile;
+
+  /// No network at all (not even a weak one): voice typing must then run on the phone.
+  final bool offline;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LinkSnapshot &&
+      other.onMobile == onMobile &&
+      other.offline == offline;
+
+  @override
+  int get hashCode => Object.hash(onMobile, offline);
+}
+
 abstract class LinkMonitor {
-  Future<bool> isOnMobile();
-  Stream<bool> get onMobileChanges;
+  Future<LinkSnapshot> read();
+  Stream<LinkSnapshot> get changes;
 }
 
 class ConnectivityLinkMonitor implements LinkMonitor {
@@ -42,30 +61,33 @@ class ConnectivityLinkMonitor implements LinkMonitor {
 
   final Connectivity _c;
 
-  static bool _mobileOnly(List<ConnectivityResult> r) =>
-      r.contains(ConnectivityResult.mobile) &&
-      !r.contains(ConnectivityResult.wifi) &&
-      !r.contains(ConnectivityResult.ethernet);
+  static LinkSnapshot _snap(List<ConnectivityResult> r) => LinkSnapshot(
+    onMobile:
+        r.contains(ConnectivityResult.mobile) &&
+        !r.contains(ConnectivityResult.wifi) &&
+        !r.contains(ConnectivityResult.ethernet),
+    offline: r.isEmpty || r.every((e) => e == ConnectivityResult.none),
+  );
 
   @override
-  Future<bool> isOnMobile() async {
+  Future<LinkSnapshot> read() async {
     try {
-      return _mobileOnly(await _c.checkConnectivity());
+      return _snap(await _c.checkConnectivity());
     } catch (_) {
-      return false;
+      return const LinkSnapshot();
     }
   }
 
   @override
-  Stream<bool> get onMobileChanges =>
-      _c.onConnectivityChanged.map(_mobileOnly).distinct();
+  Stream<LinkSnapshot> get changes =>
+      _c.onConnectivityChanged.map(_snap).distinct();
 }
 
-/// Never reports mobile data (default for tests and platforms without the plugin).
+/// Never reports mobile data or "offline" (default for tests and platforms without the plugin).
 class NoLinkMonitor implements LinkMonitor {
   @override
-  Future<bool> isOnMobile() async => false;
+  Future<LinkSnapshot> read() async => const LinkSnapshot();
 
   @override
-  Stream<bool> get onMobileChanges => const Stream.empty();
+  Stream<LinkSnapshot> get changes => const Stream.empty();
 }

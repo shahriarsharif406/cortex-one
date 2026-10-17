@@ -6,6 +6,8 @@ import '../api/api_client.dart';
 import '../api/models.dart';
 import '../state/app_state.dart';
 import '../state/pending_controller.dart';
+import '../widgets/computer_status_card.dart';
+import '../widgets/power_card.dart';
 import 'alerts_screen.dart';
 import 'watch_screen.dart';
 
@@ -160,6 +162,7 @@ class _HomeTabState extends State<HomeTab> {
           );
           if (finished) setState(() => _listening = false);
         },
+        onDevice: app.voiceOnDevice,
       );
     } catch (_) {
       if (mounted) {
@@ -331,6 +334,17 @@ class _HomeTabState extends State<HomeTab> {
               ),
             ],
           ),
+          if (app.current != null) ...[
+            ComputerStatusCard(
+              computer: app.current!,
+              monitor: app.monitorFor(app.current!),
+            ),
+            PowerCard(
+              computer: app.current!,
+              api: widget.api,
+              monitor: app.monitorFor(app.current!),
+            ),
+          ],
           _statusCard(context),
           const SizedBox(height: 16),
           Text(
@@ -387,6 +401,40 @@ class _HomeTabState extends State<HomeTab> {
               style: TextStyle(color: scheme.error),
             ),
           Text(s.t('voice_hint'), style: Theme.of(context).textTheme.bodySmall),
+          SwitchListTile(
+            key: const Key('voice_offline_switch'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: Text(s.t('voice_offline_pref')),
+            subtitle: app.phoneOffline
+                ? Text(s.t('voice_offline_title'))
+                : null,
+            value: app.voiceOnDevice,
+            onChanged: app.phoneOffline ? null : app.setVoiceOffline,
+          ),
+          TextButton.icon(
+            key: const Key('voice_offline_help'),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: Text(s.t('voice_offline_title')),
+                content: SingleChildScrollView(
+                  child: Text(
+                    s.t('voice_offline_body'),
+                    key: const Key('voice_offline_text'),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(s.t('ok')),
+                  ),
+                ],
+              ),
+            ),
+            icon: const Icon(Icons.help_outline, size: 18),
+            label: Text(s.t('voice_offline_help')),
+          ),
           const SizedBox(height: 8),
           FilledButton.icon(
             key: const Key('send_button'),

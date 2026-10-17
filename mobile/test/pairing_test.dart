@@ -1,5 +1,6 @@
 import 'package:cortex_one/api/api_client.dart';
 import 'package:flutter/material.dart';
+import 'package:cortex_one/state/computer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
@@ -35,8 +36,10 @@ void main() {
     await tester.pump();
 
     expect(h.api.calls, contains('pair:123456'));
-    expect(h.secrets.values['device_token'], 'tok-secret-123');
-    expect(h.secrets.values['server_address'], 'http://100.64.1.2:8765');
+    final stored = decodeComputers(h.secrets.values['computers']);
+    expect(stored.single.token, 'tok-secret-123');
+    expect(stored.single.endpoints, ['http://100.64.1.2:8765']);
+    expect(h.secrets.values.containsKey('device_token'), isFalse); // old keys are gone
     // never in plain preferences
     expect(h.prefs.values.values.join(' ').contains('tok-secret-123'), isFalse);
     expect(h.prefs.values.keys.any((k) => k.contains('token')), isFalse);

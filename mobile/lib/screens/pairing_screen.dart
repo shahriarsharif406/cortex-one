@@ -5,7 +5,10 @@ import '../state/app_state.dart';
 import '../widgets/settings_menu.dart';
 
 class PairingScreen extends StatefulWidget {
-  const PairingScreen({super.key});
+  const PairingScreen({super.key, this.addingMore = false});
+
+  /// True when opened from "Add a computer": shows a back button.
+  final bool addingMore;
 
   @override
   State<PairingScreen> createState() => _PairingScreenState();
@@ -14,6 +17,9 @@ class PairingScreen extends StatefulWidget {
 class _PairingScreenState extends State<PairingScreen> {
   final _server = TextEditingController();
   final _code = TextEditingController();
+  final _name = TextEditingController();
+  final _lan = TextEditingController();
+  bool _lanOk = false;
   final _form = GlobalKey<FormState>();
   bool _busy = false;
   String? _error;
@@ -22,6 +28,8 @@ class _PairingScreenState extends State<PairingScreen> {
   void dispose() {
     _server.dispose();
     _code.dispose();
+    _name.dispose();
+    _lan.dispose();
     super.dispose();
   }
 
@@ -33,7 +41,13 @@ class _PairingScreenState extends State<PairingScreen> {
       _error = null;
     });
     try {
-      await app.pair(_server.text, _code.text.trim());
+      await app.pair(
+        _server.text,
+        _code.text.trim(),
+        name: _name.text,
+        lanText: _lan.text,
+        allowLan: _lanOk,
+      );
     } on InvalidServerAddress catch (e) {
       if (mounted) setState(() => _error = app.s.t(e.messageKey));
     } catch (e) {
@@ -51,6 +65,7 @@ class _PairingScreenState extends State<PairingScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(s.t('pair_title')),
+        automaticallyImplyLeading: widget.addingMore,
         actions: const [SettingsMenu(showUnpair: false)],
       ),
       body: SafeArea(
@@ -109,6 +124,47 @@ class _PairingScreenState extends State<PairingScreen> {
                         ? null
                         : s.t('code_invalid'),
                     onFieldSubmitted: (_) => _submit(),
+                  ),
+                  ExpansionTile(
+                    key: const Key('pair_more'),
+                    tilePadding: EdgeInsets.zero,
+                    title: Text(s.t('pair_more')),
+                    children: [
+                      TextFormField(
+                        key: const Key('pair_name_field'),
+                        controller: _name,
+                        maxLength: 40,
+                        decoration: InputDecoration(
+                          labelText: s.t('pair_name_label'),
+                          counterText: '',
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        key: const Key('pair_lan_field'),
+                        controller: _lan,
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        decoration: InputDecoration(
+                          labelText: s.t('pair_lan_label'),
+                          hintText: '192.168.1.20:8765',
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      CheckboxListTile(
+                        key: const Key('pair_lan_ok'),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        value: _lanOk,
+                        onChanged: (v) => setState(() => _lanOk = v ?? false),
+                        title: Text(
+                          s.t('computer_lan_ok'),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

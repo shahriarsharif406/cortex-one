@@ -6,6 +6,7 @@ import '../state/pending_controller.dart';
 import '../widgets/emergency_bar.dart';
 import '../widgets/settings_menu.dart';
 import 'audit_screen.dart';
+import 'computers_screen.dart';
 import 'home_tab.dart';
 import 'pending_screen.dart';
 import 'screen_view.dart';
@@ -47,11 +48,30 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final s = AppScope.of(context).s;
+    final app = AppScope.of(context);
+    final s = app.s;
     final pending = _pending!;
     return Scaffold(
       appBar: AppBar(
-        title: Text(s.t('app_title')),
+        title: InkWell(
+          key: const Key('computer_switcher'),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const ComputersScreen()),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  app.current?.name ?? s.t('app_title'),
+                  key: const Key('appbar_title'),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const Icon(Icons.arrow_drop_down),
+            ],
+          ),
+        ),
         actions: const [SettingsMenu()],
       ),
       body: IndexedStack(
