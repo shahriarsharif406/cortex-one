@@ -426,13 +426,19 @@ def agent_watch(ctx: Context, params: dict[str, Any]) -> ActionResult:
 
 
 def take_screenshot(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    from .screenshots import ScreenshotError, parse_quality, to_low_jpeg
+
+    try:
+        quality = parse_quality(params.get("quality"))
+    except ScreenshotError as exc:
+        raise ActionError(exc.message)
     ctx.require_windows()
     folder = resolve_allowed(str(ctx.settings.screenshots_dir), ctx.settings.allowed_roots)
     folder.mkdir(parents=True, exist_ok=True)
-    from .screenshots import prune
+    from .screenshots import NAME_RE, prune
     keep = _clamp_int(ctx.settings.screenshot_keep, 20, 1, MAX_SCREENSHOTS - 1)
     prune(folder, keep - 1)  # room for the new one
-    if sum(1 for _ in folder.glob("screenshot-*.png")) >= MAX_SCREENSHOTS:
+    if sum(1 for p in folder.iterdir() if NAME_RE.fullmatch(p.name)) >= MAX_SCREENSHOTS:
         raise ActionError("The screenshots folder is full. Free some space; nothing is auto-deleted.")
     stamp = time.strftime("screenshot-%Y%m%d-%H%M%S")
     path = folder / f"{stamp}.png"
@@ -447,8 +453,21 @@ def take_screenshot(ctx: Context, params: dict[str, Any]) -> ActionResult:
         grab(path)
     except OSError as exc:
         raise ActionError(f"Screenshot failed: {_printable(exc, 120)}")
+    note = ""
+    if quality == "low":       # data-saver: smaller JPEG; without Pillow the PNG stays
+        try:
+            small = to_low_jpeg(path.read_bytes())
+        except OSError:
+            small = None
+        if small is not None:
+            jpg = path.with_suffix(".jpg")
+            jpg.write_bytes(small)
+            path.unlink()
+            path = jpg
+        else:
+            note = " (low quality needs Pillow; saved as normal PNG)"
     prune(folder, keep)
-    return ActionResult(True, "Screenshot saved.", {"file": path.name, "folder": str(folder)})
+    return ActionResult(True, "Screenshot saved." + note, {"file": path.name, "folder": str(folder)})
 
 
 def check_url(url: str, allowed_domains: list[str]) -> str:
@@ -575,7 +594,8 @@ REGISTRY: dict[str, ActionSpec] = {s.name: s for s in [
     ActionSpec("list_processes", "Top programs by memory, names only (read-only); "
                "optional limit 1-25", "low", list_processes, optional=("limit",)),
     ActionSpec("take_screenshot", "Save a screenshot into the screenshots folder; "
-               "returns only the file name", "low", take_screenshot),
+               "returns only the file name; optional quality low|normal (low = small JPEG "
+               "for mobile data)", "low", take_screenshot, optional=("quality",)),
     ActionSpec("open_url", "Open an https link in the default browser, only for "
                "approved websites", "low", open_url, ("url",)),
     ActionSpec("tail_log", "Last lines of an approved log by short name (read-only, "

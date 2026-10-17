@@ -71,6 +71,16 @@ class Database:
             if "device_id" not in cols:          # table made by an earlier build
                 c.execute("ALTER TABLE ai_history ADD COLUMN device_id INTEGER NOT NULL DEFAULT 0")
 
+    def kv_get(self, key: str) -> str | None:
+        with self.conn() as c:
+            row = c.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+        return None if row is None else row["value"]
+
+    def kv_set(self, key: str, value: str) -> None:
+        with self.conn() as c:
+            c.execute("INSERT INTO kv (key, value) VALUES (?, ?) "
+                      "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+
     @contextmanager
     def conn(self):
         c = sqlite3.connect(self.path, timeout=10)

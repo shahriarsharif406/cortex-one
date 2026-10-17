@@ -39,7 +39,12 @@ class Settings:
     # Bind to loopback by default. For phone access, set this to the laptop's
     # Tailscale IP (never 0.0.0.0 on a public network).
     host: str = "127.0.0.1"
+    # Several bind addresses (loopback, Tailscale 100.64.0.0/10, private LAN). When
+    # set it replaces ``host``. Validated by agent/netbind.py; never 0.0.0.0.
+    hosts: list[str] = field(default_factory=list)
     port: int = 8765
+    # Shown to the phone. "" = the Windows computer name.
+    computer_name: str = ""
     allowed_roots: list[Path] = field(default_factory=_default_roots)
     allowed_apps: dict[str, list[str]] = field(default_factory=_default_apps)
     approved_scripts: dict[str, list[str]] = field(default_factory=dict)
@@ -95,6 +100,12 @@ class Settings:
     watch_rules: list = field(default_factory=list)
     watch_check_seconds: int = 30
     watch_cooldown_seconds: int = 600
+    # Name of the SIM / USB-tether network adapter (doctor checks that it exists).
+    backup_adapter_name: str = ""
+    # Network watchdog (report only). Empty targets = the built-in two. "host:port".
+    net_watch: bool = True
+    net_check_seconds: int = 30
+    net_watch_targets: list[str] = field(default_factory=list)
     # SMS authentication: "pin" (static PIN, no replay protection) or "totp".
     sms_mode: str = "pin"
 

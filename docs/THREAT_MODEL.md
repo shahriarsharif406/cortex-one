@@ -107,6 +107,18 @@ Out of scope: an attacker with administrator rights on the laptop, physical acce
 ### 4.8 Phone app
 Tokens only in secure storage; plain http only to Tailscale/loopback; emergency stop on every tab; confirm cards show the exact command and never auto-confirm; no analytics. Proved by the Flutter widget tests in `mobile/test` (`flutter test`).
 
+### 4.9 Network reach and the admin failover task (session 2)
+| Control | Test |
+|---|---|
+| Bind only to 127.0.0.0/8, Tailscale 100.64.0.0/10, or a private LAN address the owner listed in `hosts`/`host`; never 0.0.0.0, `::`, a public address or a host name; one bad entry rejects the list and `serve` refuses to start | `test_phase1_net.py::test_allowed_addresses`, `test_rejected_addresses`, `test_one_bad_host_rejects_the_whole_list`, `test_serve_refuses_wildcard` |
+| An address that is not up yet is retried with exponential backoff (cap 10 min) and never replaced by another address | `test_address_not_up_is_retried_then_bound_when_it_appears`, `test_never_falls_back_to_another_address`, `test_backoff_doubles_up_to_the_cap` |
+| `/health` is unauthenticated and small: names, version, uptime, coarse battery, the configured address a request used, network state. No token, path, MAC or config value | `test_health_fields_and_no_secrets`, `test_health_link_only_names_configured_addresses` |
+| The network watchdog only reports (TCP connects to a fixed, validated target list) and never touches adapters | `test_watchdog_never_raises_and_never_touches_adapters`, `test_targets_parse_and_reject_bad` |
+| `doctor` shows MAC addresses locally only; `power_capabilities` and `/health` never include them | `test_doctor_wake_and_adapters` |
+| Admin scripts change nothing under `-WhatIf` (every changing command sits inside `ShouldProcess`) | `test_admin_scripts.py` |
+
+**Privilege separation of the failover task.** The agent runs as the logged-in standard user. Disabling a network adapter needs administrator rights, so it is NOT an agent action and the agent has no code path to it. `scripts/network-failover.ps1` is a separate SYSTEM scheduled task, installed by the owner with `install-network-failover.ps1`. The installer copies the script into `%ProgramData%\CortexOne\failover\` and removes inherited rights so only Administrators/SYSTEM can write there; ordinary users (and so the agent, and anything it could be tricked into running) can only read it. If the script sat in a user-writable folder, anything that could write to the agent's folder could get SYSTEM. The script takes no value from the network: adapter names are fixed at install time and pattern-checked; probe targets are fixed IP addresses; it only re-enables an adapter it disabled itself; if the tether has no internet either it re-enables Wi-Fi at once. Residual risk: an administrator who edits the script or task controls it; a malfunction can leave Wi-Fi disabled until the next retest (15 min) or until `install-network-failover.ps1 -Remove -WifiAlias <name>`.
+
 ## 5. Residual risks (accepted or open)
 
 1. **Stolen unlocked phone or stolen token** - the thief can do everything the owner's phone can, including requesting confirmations and confirming them. Mitigation is operational: revoke the device (`revoke <id>`), lock the phone, keep the Android screen lock on.

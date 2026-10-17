@@ -79,7 +79,9 @@ def _tailscale_ip(host: str) -> bool:
 def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
                version: tuple[int, int] | None = None,
                startup_probe: Callable[[], str | None] = startup_task_state,
-               battery_probe: Callable[[], object | None] | None = None) -> list[Check]:
+               battery_probe: Callable[[], object | None] | None = None,
+               wake_probe: Callable[[], dict] | None = None,
+               adapter_probe: Callable[[], list] | None = None) -> list[Check]:
     env = os.environ if env is None else env
     v = version or sys.version_info[:2]
     out: list[Check] = []
@@ -130,26 +132,34 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
             out.append(Check(FAIL, "config.json পড়া যায়নি",
                              f"config.json unreadable ({type(exc).__name__})"))
 
-    # host / port
-    if settings.host == "0.0.0.0":
-        out.append(Check(FAIL, "host 0.0.0.0 বিপজ্জনক; Tailscale IP দিন",
-                         "host is 0.0.0.0, which exposes every network; use the Tailscale IP"))
+    # hosts / port (every configured bind address is validated by agent/netbind.py)
+    from .netbind import BindError, classify_address, effective_hosts
+
+    try:
+        hosts = effective_hosts(settings)
+    except BindError as exc:
+        hosts = []
+        out.append(Check(FAIL, f"bind ঠিকানা অবৈধ (0.0.0.0 বা পাবলিক নিষিদ্ধ): {exc}",
+                         f"invalid bind address(es), 0.0.0.0 / public are never allowed: {exc}"))
     else:
-        out.append(Check(OK, f"host {settings.host} নিরাপদ", f"host {settings.host} is not 0.0.0.0"))
-    if _tailscale_ip(settings.host):
-        out.append(Check(OK, "host একটি Tailscale IP (ফোন পৌঁছাতে পারবে)",
-                         "host is a Tailscale IP (the phone can reach it)"))
-    elif settings.host in ("127.0.0.1", "localhost", "::1"):
-        out.append(Check(WARN, "host শুধু এই ল্যাপটপ থেকে পৌঁছানো যায়; ফোনের জন্য Tailscale IP দিন",
+        out.append(Check(OK, f"{len(hosts)}টি bind ঠিকানা বৈধ: {', '.join(hosts)}",
+                         f"{len(hosts)} bind address(es) valid: {', '.join(hosts)}"))
+    kinds = {h: classify_address(h) for h in hosts}
+    if hosts and "tailscale" in kinds.values():
+        out.append(Check(OK, "একটি Tailscale IP বাঁধা আছে (ফোন পৌঁছাতে পারবে)",
+                         "a Tailscale IP is configured (the phone can reach it)"))
+    elif hosts and "lan" in kinds.values():
+        out.append(Check(WARN, "শুধু LAN IP আছে; Tailscale IP ছাড়া মোবাইল ডেটা থেকে পৌঁছানো যাবে না",
+                         "only a LAN IP: not reachable over mobile data without a Tailscale IP"))
+    elif hosts:
+        out.append(Check(WARN, "host শুধু এই কম্পিউটার থেকে পৌঁছানো যায়; ফোনের জন্য Tailscale IP দিন",
                          "host is loopback: the phone cannot reach it; set the Tailscale IP"))
-    else:
-        out.append(Check(WARN, "host Tailscale রেঞ্জের (100.64-127.x) নয়",
-                         "host is not in the Tailscale range (100.64.0.0/10)"))
-    if _port_free(settings.host, settings.port):
-        out.append(Check(OK, f"পোর্ট {settings.port} ফাঁকা", f"port {settings.port} is free"))
-    else:
-        out.append(Check(WARN, f"পোর্ট {settings.port} ব্যস্ত (এজেন্ট হয়তো চালু আছে)",
-                         f"port {settings.port} is in use (agent may already be running)"))
+    for h in hosts[:1]:
+        if _port_free(h, settings.port):
+            out.append(Check(OK, f"পোর্ট {settings.port} ফাঁকা", f"port {settings.port} is free"))
+        else:
+            out.append(Check(WARN, f"পোর্ট {settings.port} ব্যস্ত (এজেন্ট হয়তো চালু আছে)",
+                             f"port {settings.port} is in use (agent may already be running)"))
 
     # AI key: only whether it is set
     if env.get("ANTHROPIC_API_KEY", "").strip():
@@ -269,6 +279,40 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
             out.append(Check(WARN, f"watch_rules সমস্যা: {prob}", f"watch_rules problem: {prob}"))
         if rules:
             out.append(Check(OK, f"{len(rules)}টি watch rule ঠিক আছে", f"{len(rules)} watch rule(s) valid"))
+
+    # wake capability, adapters, Tailscale, backup interface (MACs shown only here, locally)
+    from . import wakeinfo
+
+    caps = (wake_probe or wakeinfo.wake_capabilities)()
+    if not caps.get("known"):
+        out.append(Check(WARN, "জাগানোর ক্ষমতা জানা যায়নি (Windows/powercfg দরকার)",
+                         "wake capability unknown (needs Windows and powercfg)"))
+    else:
+        out.append(Check(OK, f"wake_armed ডিভাইস: {len(caps['armed'])}, wake_programmable: {len(caps['programmable'])}",
+                         f"wake_armed devices: {len(caps['armed'])}, wake_programmable: {len(caps['programmable'])}"))
+        for key, label in (("wifi_wake_from_sleep", "Wi-Fi"), ("ethernet_wake", "Ethernet")):
+            lvl = OK if caps[key] == "yes" else WARN
+            out.append(Check(lvl, f"{label} দিয়ে জাগানো: {caps[key]}",
+                             f"wake via {label}: {caps[key]} (see powercfg /devicequery wake_programmable)"))
+    adapter_list = (adapter_probe or wakeinfo.adapters)()
+    for a in adapter_list:
+        ips = ", ".join(a["ipv4"]) or "-"
+        out.append(Check(OK, f"অ্যাডাপ্টার {a['name']}: {ips} MAC {a['mac'] or '-'} (শুধু এখানে দেখানো)",
+                         f"adapter {a['name']}: {ips} MAC {a['mac'] or '-'} (shown locally only)"))
+    if wakeinfo.tailscale_present(adapter_list):
+        out.append(Check(OK, "Tailscale ঠিকানা আছে", "a Tailscale address is present"))
+    else:
+        out.append(Check(WARN, "Tailscale ঠিকানা নেই (Tailscale চালু/লগইন করুন)",
+                         "no Tailscale address present (start/sign in to Tailscale)"))
+    backup = (settings.backup_adapter_name or "").strip()
+    if not backup:
+        out.append(Check(WARN, "backup_adapter_name সেট নেই (SIM/টেদার অ্যাডাপ্টারের নাম দিন)",
+                         "backup_adapter_name not set (name of the SIM/tether adapter)"))
+    elif any(a["name"].lower() == backup.lower() for a in adapter_list):
+        out.append(Check(OK, "ব্যাকআপ ইন্টারফেস আছে", "the backup interface exists"))
+    else:
+        out.append(Check(WARN, "ব্যাকআপ ইন্টারফেস এখন নেই (টেদার/ডঙ্গল লাগান)",
+                         "the backup interface is not present now (plug in the tether/dongle)"))
     return out
 
 

@@ -2,6 +2,10 @@
 validation, logging and error handling."""
 from __future__ import annotations
 
+import json
+import platform
+import secrets
+import time
 from typing import Any
 
 from .actions import (REGISTRY, ActionError, ActionResult, Context,
@@ -9,7 +13,9 @@ from .actions import (REGISTRY, ActionError, ActionResult, Context,
 from .audit import AuditLog
 from .config import Settings
 from .db import Database
-from .power import AlertStore, critical_threshold
+from .netbind import classify_address
+from .netwatch import NetWatcher
+from .power import AlertStore, critical_threshold, psutil_battery
 from .watch import RuleWatcher
 from .security import ConfirmationStore, PairingManager, RateLimiter
 
@@ -25,6 +31,9 @@ class Engine:
         self.confirmations = ConfirmationStore(settings.confirm_ttl_seconds)
         self.alerts = AlertStore(self.db)
         self.watch = RuleWatcher(self)       # rule watcher; serve starts its thread
+        self.net = NetWatcher(self)          # network watchdog (report only)
+        self.started_at = time.time()
+        self.battery_provider = psutil_battery
 
     # Channels that only trusted in-process code may use. HTTP, SMS, the AI and
     # the CLI pass their own fixed ``via``, so a client can never reach this.
@@ -43,6 +52,65 @@ class Engine:
             self.audit.log(actor, via, action, params, "rejected", "high-risk action from the AI")
             return ActionResult(False, "The AI cannot run this action.")
         return self._execute(action, params, actor, via)
+
+    # Actions after which the computer is expected to go away. The agent remembers the
+    # last one so the phone can tell "sleeping" from "offline" when it comes back.
+    POWER_ACTIONS = frozenset({"sleep", "hibernate", "shutdown", "restart"})
+
+    def computer_id(self) -> str:
+        """A random id made once per installation (not derived from hardware)."""
+        cid = self.db.kv_get("computer_id")
+        if not cid:
+            cid = secrets.token_hex(8)
+            self.db.kv_set("computer_id", cid)
+        return cid
+
+    def computer_name(self) -> str:
+        name = (self.settings.computer_name or "").strip() or platform.node()
+        return "".join(ch for ch in name if ch.isprintable())[:60] or "computer"
+
+    def last_power_request(self) -> dict[str, Any] | None:
+        raw = self.db.kv_get("last_power_request")
+        try:
+            data = json.loads(raw) if raw else None
+            if (isinstance(data, dict) and data.get("action") in self.POWER_ACTIONS
+                    and isinstance(data.get("ts"), (int, float))):
+                return {"action": data["action"], "age_seconds": max(0, round(time.time() - data["ts"]))}
+        except ValueError:
+            pass
+        return None
+
+    def health(self, link_address: str | None = None) -> dict[str, Any]:
+        """The /health body. No secrets: names, versions, coarse numbers only."""
+        from . import __version__
+
+        try:
+            battery = self.battery_provider()
+        except Exception:
+            battery = None
+        hosts = self.configured_hosts
+        link = None
+        if link_address and link_address in hosts:
+            link = {"address": link_address, "kind": classify_address(link_address)}
+        return {
+            "status": "ok", "version": __version__,
+            "computer_id": self.computer_id(), "computer_name": self.computer_name(),
+            "uptime_seconds": round(time.time() - self.started_at),
+            "battery": None if battery is None else {
+                "percent": round(battery.percent), "plugged": battery.plugged},
+            "link": link,
+            "network": {"state": self.net.state, "since": self.net.since},
+            "last_power_request": self.last_power_request(),
+        }
+
+    @property
+    def configured_hosts(self) -> list[str]:
+        from .netbind import BindError, effective_hosts
+
+        try:
+            return effective_hosts(self.settings)
+        except BindError:
+            return []
 
     def run_power_action(self, battery_percent: float | None,
                          plugged: bool | None) -> ActionResult | None:
@@ -81,4 +149,10 @@ class Engine:
             return ActionResult(False, "The action failed unexpectedly. See the audit log.")
         self.audit.log(actor, via, action, params,
                        "ok" if result.ok else "failed", result.message)
+        if result.ok and action in self.POWER_ACTIONS:
+            try:
+                self.db.kv_set("last_power_request",
+                               json.dumps({"action": action, "ts": time.time()}))
+            except Exception:
+                pass
         return result

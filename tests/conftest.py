@@ -74,4 +74,15 @@ def engine(settings, runner, launched, opened) -> Engine:
                   launcher=lambda cmd: launched.append(cmd),
                   stop_event=threading.Event(),
                   screenshotter=fake_screenshot, url_opener=opened.append)
-    return Engine(settings, ctx)
+    eng = Engine(settings, ctx)
+    eng.battery_provider = lambda: None       # never read the real battery in tests
+    return eng
+
+
+@pytest.fixture(autouse=True)
+def _no_real_system_probes(monkeypatch):
+    """Tests never ask Windows (powercfg) or the real interfaces; explicit fakes only."""
+    from agent import wakeinfo
+
+    monkeypatch.setattr(wakeinfo, "default_runner", lambda cmd, timeout=15: (-1, ""))
+    monkeypatch.setattr(wakeinfo, "adapters", lambda: [])

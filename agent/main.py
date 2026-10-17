@@ -15,33 +15,35 @@ from .sms import normalize_number
 
 
 def cmd_serve(settings: Settings, _args) -> int:
-    import uvicorn
-
+    from .logging_setup import setup_logging
+    from .netbind import BindError, BindManager, effective_hosts, uvicorn_factory
     from .server import create_app
 
-    from .logging_setup import setup_logging
-
     setup_logging(settings)
-    if settings.host == "0.0.0.0":
-        msg = ("WARNING: host 0.0.0.0 exposes the agent on every network. "
-               "Prefer your Tailscale IP.")
-        logging.getLogger("cortex").warning(msg)
-        if sys.stderr:
-            print(msg, file=sys.stderr)
+    try:
+        hosts = effective_hosts(settings)       # rejects 0.0.0.0, public and odd addresses
+    except BindError as exc:
+        print(f"Refusing to start: {exc}", file=sys.stderr)
+        logging.getLogger("cortex").error("refusing to start: %s", exc)
+        return 2
     engine = Engine(settings)
+    from .notify import Notifier
+
     if settings.power_watch:
-        from .notify import Notifier
         from .power import PowerWatcher
 
         PowerWatcher(engine, notifier=Notifier.from_settings(settings)).start()
-    from .notify import Notifier as _Notifier
-
-    engine.watch.notifier = _Notifier.from_settings(settings)
+    engine.watch.notifier = Notifier.from_settings(settings)
     engine.watch.start()
+    if settings.net_watch:
+        engine.net.notifier = Notifier.from_settings(settings)
+        engine.net.start()
     app = create_app(settings, engine)
-    # log_config=None keeps the rotating, redacting file handler we installed.
-    uvicorn.run(app, host=settings.host, port=settings.port, log_config=None,
-                log_level="info")
+    # One uvicorn server per address. An address that is not up yet (Tailscale at boot) is
+    # retried with backoff; there is never a fallback to another address.
+    manager = BindManager(hosts, settings.port, uvicorn_factory(app))
+    manager.start()
+    manager.join()
     return 0
 
 

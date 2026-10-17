@@ -125,8 +125,16 @@ def create_app(settings: Settings | None = None,
         return {"summary": REGISTRY[action].description if action in REGISTRY else action}
 
     @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok", "version": __version__}
+    def health(request: Request) -> dict[str, Any]:
+        """Unauthenticated and deliberately small: names, version, uptime, coarse battery,
+        which of our addresses this request used, network state. No tokens, paths or MACs."""
+        server = request.scope.get("server")
+        return engine.health(server[0] if server else None)
+
+    @app.get("/network")
+    def network(device: Device = Depends(current_device)) -> dict:
+        """Network watchdog state and recent network alerts (read-only)."""
+        return engine.net.snapshot()
 
     @app.post("/pair")
     def pair(body: PairRequest, request: Request) -> dict[str, str]:
@@ -295,9 +303,10 @@ def create_app(settings: Settings | None = None,
             raise HTTPException(exc.status, exc.message)
 
     @app.get("/screenshots/{name}")
-    def screenshot_file(name: str, width: int | None = None, quality: int = 60,
+    def screenshot_file(name: str, width: int | None = None, quality: str = "normal",
                         device: Device = Depends(current_device)) -> Response:
         try:
+            screenshots.parse_quality(quality)
             data, mime = screenshots.load_screenshot(settings, name, width, quality)
         except screenshots.ScreenshotError as exc:
             raise HTTPException(exc.status, exc.message)

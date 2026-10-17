@@ -93,8 +93,39 @@ def pillow_available() -> bool:
     return True
 
 
+LOW_WIDTH, LOW_JPEG_QUALITY = 640, 35          # data-saver ("low"): SIM link
+
+
+def parse_quality(value) -> str:
+    """'low' | 'normal'. Anything else is a ScreenshotError (400), never silently guessed."""
+    if value is None or value == "":
+        return "normal"
+    if isinstance(value, str) and value.strip().lower() in ("low", "normal"):
+        return value.strip().lower()
+    raise ScreenshotError(400, "quality must be 'low' or 'normal'.")
+
+
+def to_low_jpeg(png_bytes: bytes) -> bytes | None:
+    """Downscale + JPEG-compress (data-saver). None when Pillow is missing or the data is bad."""
+    if not pillow_available():
+        return None
+    from PIL import Image
+
+    try:
+        Image.MAX_IMAGE_PIXELS = 50_000_000
+        with Image.open(io.BytesIO(png_bytes)) as im:
+            im = im.convert("RGB")
+            if im.width > LOW_WIDTH:
+                im = im.resize((LOW_WIDTH, max(1, round(im.height * LOW_WIDTH / im.width))))
+            out = io.BytesIO()
+            im.save(out, "JPEG", quality=LOW_JPEG_QUALITY, optimize=True)
+    except Exception:
+        return None
+    return out.getvalue()
+
+
 def load_screenshot(settings: Settings, name: str, width: int | None = None,
-                    quality: int = 60) -> tuple[bytes, str]:
+                    quality: int | str = 60) -> tuple[bytes, str]:
     """Return (bytes, mime). With Pillow installed and ``width`` given, the image
     is downscaled and sent as JPEG (much smaller on mobile data); without Pillow
     the original file is sent unchanged."""
@@ -105,6 +136,15 @@ def load_screenshot(settings: Settings, name: str, width: int | None = None,
     if not looks_like_image(data):
         raise ScreenshotError(415, "That file is not a screenshot image.")
     mime = MIME[path.suffix[1:]]
+    if isinstance(quality, str):
+        if parse_quality(quality) == "low":
+            small = to_low_jpeg(data)
+            if small is not None and (width is None or width >= LOW_WIDTH):
+                return small, "image/jpeg"
+            width = LOW_WIDTH if width is None else width
+            quality = LOW_JPEG_QUALITY
+        else:
+            quality = 60
     if width is None or not pillow_available():
         return data, mime
     width = max(MIN_WIDTH, min(int(width), MAX_WIDTH))
