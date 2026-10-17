@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import 'health.dart';
 import 'models.dart';
 
 enum ApiErrorKind {
@@ -57,7 +58,25 @@ abstract class CortexApi {
   Future<List<ScreenshotInfo>> screenshots();
 
   /// The image bytes; [width] asks the agent to downscale (smaller download).
-  Future<Uint8List> screenshotBytes(String name, {int? width});
+  /// [lowData] asks for the small data-saver JPEG (for the SIM link).
+  Future<Uint8List> screenshotBytes(String name, {int? width, bool lowData});
+
+  /// GET /health: no token needed. Used for the online / sleeping / offline badge.
+  Future<Health> health();
+
+  /// First step of any action: low-risk ones run at once; high-risk ones come back
+  /// as a [ConfirmTicket] that [confirmAction] must answer within its lifetime.
+  Future<ActionRequestResult> requestAction(
+    String name, [
+    Map<String, String> params = const {},
+  ]);
+
+  /// Second step: run the action the ticket was issued for.
+  Future<ActionOutcome> confirmAction(
+    String name,
+    String confirmToken, [
+    Map<String, String> params = const {},
+  ]);
 }
 
 typedef ApiFactory = CortexApi Function(String baseUrl, String? token);
@@ -80,9 +99,35 @@ bool isPrivateOrTailscaleHost(String host) {
       (o[0] == 100 && o[1] >= 64 && o[1] <= 127);
 }
 
+/// 10/8, 172.16/12 and 192.168/16. Plain http here is NOT encrypted: only allowed when the
+/// owner explicitly says it is their own home network (see [normalizeServerAddress]).
+bool isPrivateLanHost(String host) {
+  final m = RegExp(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$').firstMatch(host);
+  if (m == null) return false;
+  final o = [for (var i = 1; i <= 4; i++) int.parse(m.group(i)!)];
+  if (o.any((n) => n > 255)) return false;
+  return o[0] == 10 ||
+      (o[0] == 172 && o[1] >= 16 && o[1] <= 31) ||
+      (o[0] == 192 && o[1] == 168);
+}
+
+/// "tailscale" | "lan" | "loopback" | "other": what kind of link an endpoint is.
+String linkKindOfUrl(String url) {
+  final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
+  if (host == 'localhost' || host.startsWith('127.')) return 'loopback';
+  if (host.endsWith('.ts.net')) return 'tailscale';
+  final m = RegExp(r'^(\d{1,3})\.(\d{1,3})\.').firstMatch(host);
+  if (m != null && int.parse(m.group(1)!) == 100) {
+    final b = int.parse(m.group(2)!);
+    if (b >= 64 && b <= 127) return 'tailscale';
+  }
+  return isPrivateLanHost(host) ? 'lan' : 'other';
+}
+
 /// "100.64.1.2" -> "http://100.64.1.2:8765"; keeps an explicit scheme/port.
-/// Returns null when the text is not a usable address.
-String? normalizeServerAddress(String raw) {
+/// Returns null when the text is not a usable address. A private LAN address over plain
+/// http is accepted only with [allowLan] (the owner's own home Wi-Fi, no encryption).
+String? normalizeServerAddress(String raw, {bool allowLan = false}) {
   var text = raw.trim();
   if (text.isEmpty || text.contains(RegExp(r'\s'))) return null;
   if (!text.contains('://')) text = 'http://$text';
@@ -95,7 +140,11 @@ String? normalizeServerAddress(String raw) {
   if (uri.userInfo.isNotEmpty || (uri.path.isNotEmpty && uri.path != '/')) {
     return null;
   }
-  if (uri.scheme == 'http' && !isPrivateOrTailscaleHost(uri.host)) return null;
+  if (uri.scheme == 'http' &&
+      !isPrivateOrTailscaleHost(uri.host) &&
+      !(allowLan && isPrivateLanHost(uri.host))) {
+    return null;
+  }
   final port = uri.hasPort ? uri.port : 8765;
   return '${uri.scheme}://${uri.host.contains(':') ? '[${uri.host}]' : uri.host}:$port';
 }
@@ -306,8 +355,59 @@ class HttpCortexApi implements CortexApi {
   }
 
   @override
-  Future<Uint8List> screenshotBytes(String name, {int? width}) async {
-    final q = width == null ? '' : '?width=$width';
+  Future<Health> health() async =>
+      Health.fromJson(_obj(await _send('GET', '/health', auth: false)));
+
+  @override
+  Future<ActionRequestResult> requestAction(
+    String name, [
+    Map<String, String> params = const {},
+  ]) async {
+    final j = _obj(
+      await _send('POST', '/actions/$name', body: {'params': params}),
+    );
+    if (j['status'] == 'confirmation_required') {
+      final token = j['confirm_token'];
+      if (token is! String || token.isEmpty) {
+        throw const ApiException(ApiErrorKind.badResponse);
+      }
+      return ActionRequestResult.needsConfirm(
+        ConfirmTicket(
+          token: token,
+          expiresIn: (j['expires_in'] as num?)?.toInt() ?? 60,
+          message: (j['message'] ?? '').toString(),
+        ),
+      );
+    }
+    return ActionRequestResult.done(ActionOutcome.fromJson(j));
+  }
+
+  @override
+  Future<ActionOutcome> confirmAction(
+    String name,
+    String confirmToken, [
+    Map<String, String> params = const {},
+  ]) async => ActionOutcome.fromJson(
+    _obj(
+      await _send(
+        'POST',
+        '/actions/$name',
+        body: {'params': params, 'confirm_token': confirmToken},
+      ),
+    ),
+  );
+
+  @override
+  Future<Uint8List> screenshotBytes(
+    String name, {
+    int? width,
+    bool lowData = false,
+  }) async {
+    final query = [
+      if (width != null) 'width=$width',
+      if (lowData) 'quality=low',
+    ].join('&');
+    final q = query.isEmpty ? '' : '?$query';
     final response = await _request(
       'GET',
       '/screenshots/${Uri.encodeComponent(name)}$q',
