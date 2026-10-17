@@ -8,7 +8,7 @@ import secrets
 import time
 from typing import Any
 
-from .actions import (REGISTRY, ActionError, ActionResult, Context,
+from .actions import (REGISTRY, ActionError, ActionResult, Context, safe_params,
                       validate_params)
 from .audit import AuditLog
 from .config import Settings
@@ -151,19 +151,19 @@ class Engine:
                  via: str) -> ActionResult:
         spec = REGISTRY.get(action)
         if spec is None:
-            self.audit.log(actor, via, action, params, "rejected", "unknown action")
+            self.audit.log(actor, via, action, safe_params(action, params), "rejected", "unknown action")
             return ActionResult(False, "Unknown action.")
         try:
             clean = validate_params(spec, params)
             result = spec.handler(self.ctx, clean)
         except ActionError as exc:
-            self.audit.log(actor, via, action, params, "denied", str(exc))
+            self.audit.log(actor, via, action, safe_params(action, params), "denied", str(exc))
             return ActionResult(False, str(exc))
         except Exception as exc:  # never leak internals to the phone
-            self.audit.log(actor, via, action, params, "error",
+            self.audit.log(actor, via, action, safe_params(action, params), "error",
                            f"{type(exc).__name__}: {exc}")
             return ActionResult(False, "The action failed unexpectedly. See the audit log.")
-        self.audit.log(actor, via, action, params,
+        self.audit.log(actor, via, action, safe_params(action, params),
                        "ok" if result.ok else "failed", result.message)
         if result.ok and action in self.POWER_ACTIONS:
             try:

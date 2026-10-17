@@ -8,6 +8,67 @@ Map<String, String> _stringMap(dynamic v) {
   return {for (final e in v.entries) e.key.toString(): e.value.toString()};
 }
 
+class GuiActionRow {
+  const GuiActionRow({
+    required this.n,
+    required this.action,
+    required this.ok,
+    required this.detail,
+    this.shot,
+  });
+
+  final int n;
+  final String action;
+  final bool ok;
+  final String detail;
+  final String? shot;
+
+  factory GuiActionRow.fromJson(Map<String, dynamic> j) => GuiActionRow(
+    n: (j['n'] as num?)?.toInt() ?? 0,
+    action: (j['action'] ?? '').toString(),
+    ok: j['ok'] == true,
+    detail: (j['detail'] ?? '').toString(),
+    shot: j['shot']?.toString(),
+  );
+}
+
+/// The supervised GUI session (GET /gui/session). Time left comes from the agent.
+class GuiSnapshot {
+  const GuiSnapshot({
+    this.active = false,
+    this.enabled = false,
+    this.remainingSeconds = 0,
+    this.actionsUsed = 0,
+    this.maxActions = 0,
+    this.endedReason = '',
+    this.lastShot,
+    this.actions = const [],
+  });
+
+  final bool active;
+  final bool enabled;
+  final int remainingSeconds;
+  final int actionsUsed;
+  final int maxActions;
+  final String endedReason;
+  final String? lastShot;
+  final List<GuiActionRow> actions;
+
+  factory GuiSnapshot.fromJson(Map<String, dynamic> j) => GuiSnapshot(
+    active: j['active'] == true,
+    enabled: j['enabled'] == true,
+    remainingSeconds: (j['remaining_seconds'] as num?)?.toInt() ?? 0,
+    actionsUsed: (j['actions_used'] as num?)?.toInt() ?? 0,
+    maxActions: (j['max_actions'] as num?)?.toInt() ?? 0,
+    endedReason: (j['ended_reason'] ?? '').toString(),
+    lastShot: j['last_shot']?.toString(),
+    actions: [
+      for (final e in (j['actions'] as List? ?? const []))
+        if (e is Map) GuiActionRow.fromJson(Map<String, dynamic>.from(e)),
+    ],
+  );
+}
+
 /// A picture sent with an AI task: always an already shrunk, metadata-free JPEG.
 class TaskImage {
   const TaskImage({

@@ -69,6 +69,12 @@ abstract class CortexApi {
   /// [lowData] asks for the small data-saver JPEG (for the SIM link).
   Future<Uint8List> screenshotBytes(String name, {int? width, bool lowData});
 
+  /// The supervised GUI session (time left, actions used, last actions).
+  Future<GuiSnapshot> guiSession();
+
+  /// A small picture the GUI session saved (strict file name from [guiSession]).
+  Future<Uint8List> guiShotBytes(String name);
+
   /// GET /health: no token needed. Used for the online / sleeping / offline badge.
   Future<Health> health();
 
@@ -373,6 +379,21 @@ class HttpCortexApi implements CortexApi {
       for (final e in (j['files'] as List? ?? const []))
         if (e is Map) ScreenshotInfo.fromJson(Map<String, dynamic>.from(e)),
     ];
+  }
+
+  @override
+  Future<GuiSnapshot> guiSession() async =>
+      GuiSnapshot.fromJson(_obj(await _send('GET', '/gui/session')));
+
+  @override
+  Future<Uint8List> guiShotBytes(String name) async {
+    final response = await _request(
+      'GET',
+      '/gui/shot/${Uri.encodeComponent(name)}',
+      extraHeaders: const {'Accept': 'image/*'},
+    );
+    if (response.bodyBytes.isEmpty) throw const ApiException(ApiErrorKind.badResponse);
+    return response.bodyBytes;
   }
 
   @override

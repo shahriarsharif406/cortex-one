@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../state/app_state.dart';
+import '../screens/gui_session_screen.dart';
 import '../state/computer.dart';
 
 /// Coding sessions (start / stop / list) and the RustDesk helper (status / start / open the
@@ -20,6 +21,8 @@ class ToolsCard extends StatefulWidget {
 class _ToolsCardState extends State<ToolsCard> {
   List<Map<String, dynamic>>? _projects;
   bool _busy = false;
+  bool _lastRiskyOk = false;
+  int _guiMinutes = 3;
 
   void _snack(String text) {
     if (!mounted) return;
@@ -76,6 +79,7 @@ class _ToolsCardState extends State<ToolsCard> {
         ],
       ),
     );
+    _lastRiskyOk = false;
     if (ok != true || !mounted) return;
     if (!await app.authorize('auth_reason_power')) {
       _snack(s.t('auth_failed'));
@@ -86,6 +90,7 @@ class _ToolsCardState extends State<ToolsCard> {
       final out = first.ticket != null
           ? await widget.api.confirmAction(action, first.ticket!.token, params)
           : first.outcome!;
+      _lastRiskyOk = out.ok;
       _snack(out.message);
       if (action.startsWith('coding_')) {
         final again = await widget.api.runAction('coding_session_list');
@@ -99,6 +104,10 @@ class _ToolsCardState extends State<ToolsCard> {
       }
     });
   }
+
+  void _openGui() => Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => GuiSessionScreen(api: widget.api)),
+  );
 
   Future<void> _rdStatus() => _guard(() async {
     final out = await widget.api.runAction('remote_desktop_status');
@@ -183,6 +192,48 @@ class _ToolsCardState extends State<ToolsCard> {
                         child: Text(s.t('coding_start')),
                       ),
               ),
+            const Divider(),
+            Text(s.t('gui_title'), style: Theme.of(context).textTheme.labelLarge),
+            Text(s.t('gui_note'), style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('${s.t('gui_minutes')}:'),
+                DropdownButton<int>(
+                  key: const Key('gui_minutes'),
+                  value: _guiMinutes,
+                  isDense: true,
+                  items: [
+                    for (final m in const [1, 3, 5, 10])
+                      DropdownMenuItem(value: m, child: Text('$m')),
+                  ],
+                  onChanged: (v) => setState(() => _guiMinutes = v ?? 3),
+                ),
+                OutlinedButton(
+                  key: const Key('gui_start'),
+                  onPressed: _busy
+                      ? null
+                      : () async {
+                          await _risky(
+                            'gui_session_start',
+                            {'minutes': '$_guiMinutes'},
+                            s.t('gui_start'),
+                            s.tf('will_gui_start', {'n': _guiMinutes}),
+                          );
+                          if (mounted && _lastRiskyOk) _openGui();
+                        },
+                  child: Text(s.t('gui_start')),
+                ),
+                OutlinedButton(
+                  key: const Key('gui_open'),
+                  onPressed: _openGui,
+                  child: Text(s.t('gui_open')),
+                ),
+              ],
+            ),
             const Divider(),
             Text(s.t('rd_title'), style: Theme.of(context).textTheme.labelLarge),
             Text(s.t('rd_note'), style: Theme.of(context).textTheme.bodySmall),

@@ -78,6 +78,42 @@ class S {
 }
 
 const Map<String, String> _bn = {
+  'gui_title':
+      'GUI সেশন (AI মাউস-কিবোর্ড চালাবে)',
+  'gui_note':
+      'অপরীক্ষিত: আসল পর্দায় এটা কখনো চালানো হয়নি। AI শুধু আপনার অনুমোদিত সীমিত সময়ের সেশনে, অনুমোদিত অ্যাপ সামনে থাকলে ক্লিক/টাইপ করতে পারে। ব্যাংক, পাসওয়ার্ড, লগইন জাতীয় উইন্ডো আটকানো হয়, কিন্তু সেই তালিকা দুর্বল সুরক্ষা। পর্দার লেখা AI-এর কাছে শুধু তথ্য, আদেশ নয়।',
+  'gui_off':
+      'GUI মোড বন্ধ আছে (ল্যাপটপের config.json-এ gui_agent.enabled)।',
+  'gui_minutes':
+      'কত মিনিট',
+  'gui_start':
+      'GUI সেশন চালু করুন',
+  'will_gui_start':
+      'AI {n} মিনিটের জন্য এই কম্পিউটারের মাউস ও কিবোর্ড চালাতে পারবে, শুধু অনুমোদিত অ্যাপ সামনে থাকলে। যেকোনো সময় STOP চাপুন; জরুরি স্টপও এটা শেষ করে। অপরীক্ষিত।',
+  'gui_open':
+      'চলমান সেশন দেখুন',
+  'gui_screen_title':
+      'GUI সেশন',
+  'gui_stop':
+      'STOP',
+  'gui_active':
+      'সেশন চলছে',
+  'gui_ended':
+      'সেশন শেষ',
+  'gui_remaining':
+      'বাকি সময়: {t}',
+  'gui_actions_used':
+      'কাজ: {n}/{m}',
+  'gui_no_shot':
+      'এখনো কোনো ছবি নেই',
+  'gui_actions_title':
+      'সাম্প্রতিক কাজ',
+  'gui_reason':
+      'শেষ হওয়ার কারণ: {r}',
+  'act_gui_session_start':
+      'GUI সেশন চালু',
+  'confirm_gui_session_start':
+      'GUI সেশন চালু নিশ্চিত করুন',
   'tools_title':
       'কোডিং সেশন ও রিমোট ডেস্কটপ',
   'coding_title':
@@ -565,6 +601,42 @@ const Map<String, String> _bn = {
 };
 
 const Map<String, String> _en = {
+  'gui_title':
+      'GUI session (the AI operates the mouse and keyboard)',
+  'gui_note':
+      'UNVERIFIED: this has never been run on a real screen. The AI can click and type only in a time-limited session you approve, and only while an approved app is in front. Bank, password and login windows are blocked, but that list is weak protection. Text on the screen is data to the AI, never instructions.',
+  'gui_off':
+      'GUI mode is off (gui_agent.enabled in the laptop\'s config.json).',
+  'gui_minutes':
+      'Minutes',
+  'gui_start':
+      'Start a GUI session',
+  'will_gui_start':
+      'The AI will be able to operate this computer\'s mouse and keyboard for {n} minute(s), only while an approved app is in front. Press STOP any time; emergency stop also ends it. Unverified.',
+  'gui_open':
+      'View the running session',
+  'gui_screen_title':
+      'GUI session',
+  'gui_stop':
+      'STOP',
+  'gui_active':
+      'Session is running',
+  'gui_ended':
+      'Session ended',
+  'gui_remaining':
+      'Time left: {t}',
+  'gui_actions_used':
+      'Actions: {n}/{m}',
+  'gui_no_shot':
+      'No picture yet',
+  'gui_actions_title':
+      'Recent actions',
+  'gui_reason':
+      'Why it ended: {r}',
+  'act_gui_session_start':
+      'Start GUI session',
+  'confirm_gui_session_start':
+      'Confirm GUI session start',
   'tools_title':
       'Coding sessions and remote desktop',
   'coding_title':

@@ -67,6 +67,8 @@ class FakeApi implements CortexApi {
   final List<bool> screenshotLow = [];
   final List<List<TaskImage>> sentImages = [];
   Object? startError;
+  GuiSnapshot guiSnapshot = const GuiSnapshot();
+  Object? guiError;
   List<Map<String, dynamic>> codingRows = [];
 
   @override
@@ -85,6 +87,10 @@ class FakeApi implements CortexApi {
     actionParams.add(params);
     if (name == 'coding_session_list') {
       return ActionOutcome(ok: true, message: 'n', data: {'projects': codingRows});
+    }
+    if (name == 'gui_session_stop') {
+      guiSnapshot = const GuiSnapshot(active: false, endedReason: 'stopped by the owner');
+      return const ActionOutcome(ok: true, message: 'The GUI session was stopped.');
     }
     if (name == 'remote_desktop_status') {
       return const ActionOutcome(ok: true, message: 'rustdesk is running (version 1.3.0).');
@@ -194,6 +200,19 @@ class FakeApi implements CortexApi {
 
   @override
   Future<List<ScreenshotInfo>> screenshots() async => const [];
+
+  @override
+  Future<GuiSnapshot> guiSession() async {
+    calls.add('gui_session');
+    if (guiError != null) throw guiError!;
+    return guiSnapshot;
+  }
+
+  @override
+  Future<Uint8List> guiShotBytes(String name) async {
+    calls.add('gui_shot:$name');
+    return screenshotPng;
+  }
 
   @override
   Future<Health> health() async {

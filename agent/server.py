@@ -152,6 +152,14 @@ def create_app(settings: Settings | None = None,
             if project is not None and verb == "Start":
                 out["command"] = list(project.argv) + ["(in folder)", str(project.path)]
             return out
+        if action == "gui_session_start":
+            from .gui import GuiPolicy
+
+            pol = GuiPolicy.from_settings(settings)
+            return {"summary": f"Let the AI operate the mouse and keyboard for {params.get('minutes', '?')} "
+                               f"minute(s), at most {pol.max_actions} actions, only while one of these apps "
+                               f"is in front: {', '.join(sorted(pol.allowed_apps)) or 'none'}. You can stop "
+                               "it any time; emergency stop ends it too. Unverified on a real screen."}
         if action == "remote_desktop_start":
             return {"summary": "Start the remote desktop helper (RustDesk). This makes the computer "
                                "reachable through it while it runs."}
@@ -234,8 +242,10 @@ def create_app(settings: Settings | None = None,
                                  "bad or expired confirmation")
                 raise HTTPException(403, "Confirmation is invalid or expired.")
         result = engine.run(name, body.params, actor=actor, via="http")
+        # keys starting with "_" carry pictures meant for the AI only; never send them to a client
+        data = {k: v for k, v in result.data.items() if not str(k).startswith("_")}
         return {"status": "ok" if result.ok else "failed",
-                "message": result.message, "data": result.data}
+                "message": result.message, "data": data}
 
     @app.post("/emergency-stop")
     def emergency_stop(device: Device = Depends(current_device)) -> dict[str, Any]:
@@ -368,6 +378,20 @@ def create_app(settings: Settings | None = None,
         return Response(content=data, media_type=mime,
                         headers={"Cache-Control": "no-store",
                                  "X-Content-Type-Options": "nosniff"})
+
+    @app.get("/gui/session")
+    def gui_session(device: Device = Depends(current_device)) -> dict:
+        """State of the supervised GUI session (time left, actions used, last actions). Read-only."""
+        return engine.ctx.gui.snapshot()
+
+    @app.get("/gui/shot/{name}")
+    def gui_shot(name: str, device: Device = Depends(current_device)) -> Response:
+        """A small picture the GUI session saved (strict file names only)."""
+        found = engine.ctx.gui.shot_bytes(name)
+        if found is None:
+            raise HTTPException(404, "No such picture.")
+        return Response(content=found[0], media_type=found[1],
+                        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
     @app.get("/alerts")
     def alerts(limit: int = 20, device: Device = Depends(current_device)) -> list[dict]:

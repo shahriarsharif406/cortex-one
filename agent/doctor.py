@@ -291,6 +291,17 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
             out.append(Check(WARN, f"coding_projects সমস্যা: {prob}", f"coding_projects problem: {prob}"))
         if projects:
             out.append(Check(OK, f"{len(projects)}টি কোডিং প্রজেক্ট ঠিক আছে", f"{len(projects)} coding project(s) valid"))
+    from .gui import GuiPolicy
+
+    gp = GuiPolicy.from_settings(settings)
+    if not gp.enabled:
+        out.append(Check(OK, "GUI এজেন্ট মোড বন্ধ (ডিফল্ট)", "GUI agent mode is off (default)"))
+    elif not gp.allowed_apps:
+        out.append(Check(WARN, "GUI মোড চালু কিন্তু allowed_apps খালি; কোনো ইনপুট চলবে না",
+                         "GUI mode is on but allowed_apps is empty; no input will be accepted"))
+    else:
+        out.append(Check(WARN, f"GUI মোড চালু ({', '.join(sorted(gp.allowed_apps))}); আসল পর্দায় পরীক্ষা করা হয়নি",
+                         f"GUI mode is ON for {', '.join(sorted(gp.allowed_apps))}; never verified on a real screen"))
     rd = str(settings.remote_desktop_app or "").strip().lower()
     if rd in {str(k).strip().lower() for k in settings.allowed_apps}:
         out.append(Check(OK, "রিমোট ডেস্কটপ অ্যাপ allowed_apps-এ আছে", "the remote desktop app is in allowed_apps"))

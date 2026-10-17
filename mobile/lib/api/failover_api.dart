@@ -112,6 +112,10 @@ class FailoverApi implements CortexApi {
   @override
   Future<Health> health() => _read((a) => a.health());
   @override
+  Future<GuiSnapshot> guiSession() => _read((a) => a.guiSession());
+  @override
+  Future<Uint8List> guiShotBytes(String name) => _read((a) => a.guiShotBytes(name));
+  @override
   Future<TaskStatus> getTask(String id) => _read((a) => a.getTask(id));
   @override
   Future<List<PendingItem>> pending() => _read((a) => a.pending());

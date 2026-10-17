@@ -637,9 +637,11 @@ def test_the_session_ending_mid_task_removes_the_tools(gx):
                          resp([tool_use("t2", "gui_click", x="1", y="1")], "tool_use"),
                          resp([text("over")])], hook=after_first)
     r = Orchestrator(gx, client=client, today=lambda: "2026-10-17").run("go", 1, "phone")
-    assert "gui_click" in tools_of(client, 0)
-    assert "gui_click" not in tools_of(client, 1) and "gui_click" not in tools_of(client, 2)
+    assert "gui_click" in tools_of(client, 0) and "gui_click" in tools_of(client, 1)
+    # the limit passed while the model was thinking about turn 2: its click is refused ...
     assert gx.backend.calls == [] and not r.steps[-1]["ok"]
+    # ... and the tool is gone from every later request
+    assert "gui_click" not in tools_of(client, 2)
 
 
 def test_gui_tasks_have_a_stricter_step_cap(gx, settings):
@@ -671,7 +673,7 @@ def test_normal_tasks_keep_the_normal_step_cap(gx, settings):
 def test_emergency_stop_mid_task_stops_the_loop_and_the_session(gx):
     start(gx)
     client = FakeClient([resp([tool_use("t1", "gui_screenshot")], "tool_use"), resp([text("x")])],
-                        hook=lambda n: gx.ctx.stop_event.set() if n == 2 else None)
+                        hook=lambda n: gx.ctx.stop_event.set() if n == 1 else None)
     r = Orchestrator(gx, client=client, today=lambda: "2026-10-17").run("go", 1, "phone")
     assert not r.ok and "emergency" in r.stopped_reason.lower()
     assert not gx.ctx.gui.active()

@@ -70,6 +70,10 @@ class Settings:
     # Pictures stay in the conversation, so they are paid for on every step: worst case
     # (estimated image tokens x ai_max_steps) must stay under this per task.
     ai_image_task_token_cap: int = 60_000
+    # While a GUI session is active the AI gets the GUI tools with stricter limits: at most
+    # this many model steps and this many tokens per task, and one GUI action per model turn.
+    ai_gui_max_steps: int = 20
+    ai_gui_task_token_cap: int = 120_000
     # Cost estimate for `ai-usage`. YOU set the prices (USD per million tokens);
     # nothing is hard-coded. 0 = not set.
     ai_price_per_mtok_input: float = 0.0
@@ -113,6 +117,10 @@ class Settings:
     # used to start it. Its password and config files are never read.
     remote_desktop_process: str = "rustdesk"
     remote_desktop_app: str = "rustdesk"
+    # Supervised GUI-agent mode (agent/gui.py). OFF by default. Keys: enabled (bool),
+    # max_session_minutes (default 10), max_actions (default 60), allowed_apps (process names
+    # that must be in front for any input), blocked_title_patterns (substrings), blocked_apps.
+    gui_agent: dict = field(default_factory=dict)
     # Name of the SIM / USB-tether network adapter (doctor checks that it exists).
     backup_adapter_name: str = ""
     # Network watchdog (report only). Empty targets = the built-in two. "host:port".

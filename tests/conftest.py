@@ -86,3 +86,10 @@ def _no_real_system_probes(monkeypatch):
 
     monkeypatch.setattr(wakeinfo, "default_runner", lambda cmd, timeout=15: (-1, ""))
     monkeypatch.setattr(wakeinfo, "adapters", lambda: [])
+    from agent import gui
+
+    def _no_real_gui():
+        raise AssertionError("the real mouse/keyboard/screen backend must never be used in tests")
+
+    monkeypatch.setattr(gui, "default_backend", _no_real_gui)
+    monkeypatch.setattr(gui, "default_foreground", _no_real_gui)
