@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.1.0-rc1
+
+Session 2: "reach and control my computers in any situation". Everything below is covered by automated tests that use fakes (fake sockets, fake processes, fake BLE/SMS, fake GUI backend, a fake local-model server). **Not verified** (see `NEEDS_ME.md`): any real shutdown/sleep/wake, a real phone or APK build, real SMS, the ESP32 firmware (never compiled) and servo hardware, the Kotlin gateway service (never compiled), the GUI mouse/keyboard code on a real screen, a real Anthropic call (also with pictures), a real local model, the admin scripts (parsed and `-WhatIf` only).
+
+### Added
+- **Network resilience:** `hosts` (several bind addresses: loopback, Tailscale, private LAN; never `0.0.0.0`/public; one bad entry stops `serve`), `BindManager` (waits with backoff up to 10 min for an address that is not up yet, rebinds when it appears, never falls back), richer `/health`, `GET /network`, a report-only network watchdog, `quality=low|normal` data-saver for screenshots, `doctor` wake/adapter/Tailscale/backup checks.
+- **Admin scripts** (all `-WhatIf`): `setup-network-priority.ps1`, `set-power-plan.ps1`, `network-failover.ps1` + `install-network-failover.ps1` (a separate SYSTEM task, script folder writable only by administrators).
+- **Power layer:** `wake_computer` (Wake-on-LAN, allowlisted targets, rate limited), `sleep` (high-risk), `power_capabilities`, a "last power request" hint so the phone can say "probably asleep".
+- **Phone app:** many computers with Tailscale -> LAN failover (changes are never retried on another address), state badge, Power card, wake sheet (helper computer / Cortex Wake / SMS), biometric or PIN before every confirmation, data-saver (automatic on SIM), on-device voice option with a Bangla offline-pack hint, viewer mode.
+- **Cortex Wake:** ESP32 + servo power-button robot. BLE protocol with HMAC-SHA256 and a strictly increasing counter, shared test vectors (Python reference, Dart, C++ header run through WebAssembly), firmware sources (never compiled), SMS/HTTP gateway mode (Dart logic, Kotlin `SmsReceiver`/`GatewayService`), Bangla build guide.
+- **Pictures in AI tasks** (up to 3 JPEG/PNG, metadata refused not stripped, app shrinks and cleans first, token-cap aware).
+- **Coding sessions** (`coding_projects`, start/stop high-risk, own processes only) and the **RustDesk helper** (`remote_desktop_status/start`, "Open RustDesk" button).
+- **Supervised GUI-agent mode** (off by default): approved, time-limited, visible session; foreground allowlist, blocklists, fixed key list, no typing into password boxes, audited with picture references, STOP button, session screen in the app.
+- **Optional local-AI fallback** (loopback only, read-only tools, off by default) and `ai_provider = "local"`.
+- **Roles:** `viewer` (look only) and `owner`; `pair --role viewer`; `GET /me`; `token_ttl_days`; `devices` shows role, last seen, link, expiry.
+- Docs: `docs/SETUP_ORDER_BN.md`, `docs/REMOTE_DESKTOP_BN.md`, `docs/cortex-wake/*`, threat model sections 4.9-4.15, troubleshooting items 17-27, user guide sections 9-16, an honest "what works when" table in the README.
+
+### Changed
+- `GET /health` now returns names and coarse numbers (still no secrets). `GET /screenshots/{name}` accepts `quality=low|normal` (a plain number still means JPEG quality).
+- `POST /pair` also returns the phone's role. The task payload also returns `model` and `fallback`.
+- The AI tool list hides the GUI input tools unless a GUI session is active.
+- The home screen is longer: coding sessions and RustDesk are in a collapsed section at the bottom.
+- Version is `1.1.0-rc1` for the agent and the app.
+
+### Security
+- New channels reviewed in `docs/THREAT_MODEL.md` (SMS gateway phone, BLE, GUI session, picture input, admin failover task, local AI, viewer role).
+- Typed GUI text is never written to the audit log (`ActionSpec.redact`).
+
+### Verified here
+- `python -m pytest`, `flutter analyze`, `flutter test`, `scripts/check.ps1` (see the final numbers in `NEEDS_ME.md` / `PROGRESS.md`); the shared Cortex Wake vectors in Python, Dart and C++/WebAssembly.
+
 ## 1.0.0-rc1
 
 Release candidate. Everything below is covered by automated tests; items that need the owner's own key, phone, SMS gateway, Android SDK or a real shutdown are listed in `NEEDS_ME.md` and were **not** verified.

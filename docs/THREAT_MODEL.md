@@ -1,4 +1,4 @@
-# Cortex One - threat model (v1.0.0-rc1)
+# Cortex One - threat model (v1.1.0-rc1)
 
 Cortex One is a Windows agent that a phone (HTTP over Tailscale) or an SMS gateway can command, optionally through an AI operator (Anthropic Messages API). This document lists what is protected, who may attack it, where trust changes, which control answers which threat, and which test proves that control. Test names refer to files in `tests/`.
 
@@ -116,6 +116,7 @@ Tokens only in secure storage; plain http only to Tailscale/loopback; emergency 
 | The network watchdog only reports (TCP connects to a fixed, validated target list) and never touches adapters | `test_watchdog_never_raises_and_never_touches_adapters`, `test_targets_parse_and_reject_bad` |
 | `doctor` shows MAC addresses locally only; `power_capabilities` and `/health` never include them | `test_doctor_wake_and_adapters` |
 | Admin scripts change nothing under `-WhatIf` (every changing command sits inside `ShouldProcess`) | `test_admin_scripts.py` |
+| `wake_computer` can only wake names the owner listed in `wake_targets`; the MAC and the broadcast address (255.255.255.255 or a private-LAN x.y.z.255) are re-validated on every call; at most 1 packet per target per 15 s and 6 per minute; the packet is exactly 6 x 0xFF + 16 x MAC to UDP port 9; a failed send is a plain error; `sleep` is high-risk like `hibernate`/`shutdown`/`restart` and the AI can only request it | `test_phase2_power.py` |
 
 **Privilege separation of the failover task.** The agent runs as the logged-in standard user. Disabling a network adapter needs administrator rights, so it is NOT an agent action and the agent has no code path to it. `scripts/network-failover.ps1` is a separate SYSTEM scheduled task, installed by the owner with `install-network-failover.ps1`. The installer copies the script into `%ProgramData%\CortexOne\failover\` and removes inherited rights so only Administrators/SYSTEM can write there; ordinary users (and so the agent, and anything it could be tricked into running) can only read it. If the script sat in a user-writable folder, anything that could write to the agent's folder could get SYSTEM. The script takes no value from the network: adapter names are fixed at install time and pattern-checked; probe targets are fixed IP addresses; it only re-enables an adapter it disabled itself; if the tether has no internet either it re-enables Wi-Fi at once. Residual risk: an administrator who edits the script or task controls it; a malfunction can leave Wi-Fi disabled until the next retest (15 min) or until `install-network-failover.ps1 -Remove -WifiAlias <name>`.
 
@@ -166,6 +167,21 @@ Residual risks: SMS sender numbers can be spoofed on some networks (the TOTP cod
 
 Residual risks: the owner decides what `argv` runs, so a bad config entry is the owner's risk (the confirmation card shows it); a started session can do whatever that program can do as the Windows user; RustDesk with a weak password is remote access for anyone inside the tailnet.
 
+### 4.14 Local AI fallback (session 2)
+| Control | Test |
+|---|---|
+| The endpoint must be `http://127.0.0.1:PORT` (or `localhost`/`::1`): no other host, no https, no credentials, no path, no redirects | `test_phase8_local.py` endpoint tests, `test_a_redirect_is_never_followed` |
+| A local model sees only `LOCAL_TOOLS` (read-only, low risk); anything else it names is refused and creates NOT EVEN a confirmation request; no GUI, no pictures | `test_a_local_model_asking_for_anything_else_is_refused`, `test_local_provider_refuses_pictures` |
+| The fallback runs only for network/timeout errors and only when switched on; answers name the model; hostile or oversized local answers fail safely | `test_only_network_errors_trigger_the_fallback`, `test_unreadable_or_oversized_answers_fail_safely` |
+
+### 4.15 Device roles and token hygiene (session 2)
+| Control | Test |
+|---|---|
+| A `viewer` phone can only run `status`, `system_info`, `list_processes`, `take_screenshot` and a short list of GET endpoints; everything else is 403 and audited; `Engine.run(role=...)` is a second layer | `test_phase9_roles.py` (route matrix, every action against both roles) |
+| A new route fails the matrix test until someone decides whether a viewer may use it | `test_every_route_has_an_explicit_role_decision` |
+| The role is fixed when the pairing code is made; the phone cannot ask for one; an unknown role in the database means viewer | `test_the_phone_cannot_ask_for_a_role`, `test_an_unknown_role_in_the_database_is_treated_as_a_viewer` |
+| Tokens may expire (`token_ttl_days`); revoke works on the very next request, including from the CLI while the server runs | `test_tokens_expire_after_the_configured_days`, `test_revoke_*` |
+
 ## 5. Residual risks (accepted or open)
 
 1. **Stolen unlocked phone or stolen token** - the thief can do everything the owner's phone can, including requesting confirmations and confirming them. Mitigation is operational: revoke the device (`revoke <id>`), lock the phone, keep the Android screen lock on.
@@ -183,3 +199,13 @@ Residual risks: the owner decides what `argv` runs, so a bad config entry is the
 13. **The pre-commit hook is local** and can be bypassed with `--no-verify`; `scripts/check.ps1` repeats the scan before a release.
 14. **Watcher limits**: a very busy log (more than 256 KB between 30 s checks) can hide an earlier match; `process_exit` matches the process name only; log paths from `allowed_logs` are opened as given (owner-controlled config). Free-text PIN scrubbing is best effort.
 15. **Supply chain**: dependencies are pinned loosely in `requirements.txt`; review updates before installing.
+16. **New channels, never run for real:** the SMS gateway phone, the BLE link to the ESP32, the GUI session, picture input, the admin failover task and the local model are covered by tests with fakes only. Treat the first real use of each as an experiment, near the computer, with work saved.
+17. **SMS sender numbers can be spoofed on some networks.** For Cortex Wake the TOTP code (from a separate wake secret, accepted once, stored replay guard) is the real gate; a spoofed sender only makes the reply go to the real owner. Anyone who holds the wake secret AND is near the ESP32 or knows the key can press the button.
+18. **BLE frames can be delayed:** an attacker who blocks a good frame and delivers it later gets it accepted once. Radio jamming stops the robot. The firmware key sits in flash (readable by someone with physical access and a USB cable).
+19. **Pressing the power button of a running laptop** sleeps or shuts it down depending on Windows settings; the USB-power sensor can say "ON" when the laptop is off (many laptops keep USB powered). The software refuses to press an "ON" laptop without FORCE but cannot know the truth.
+20. **The GUI session is the most dangerous convenience.** While it runs, anything the model is talked into doing inside an approved app happens as the Windows user. The title/process blocklists are weak (a bank page can have an innocent title), password-field detection only works for classic edit controls, and the whole mode is unverified on a real screen. Keep it off unless needed, use short sessions, sit next to the computer.
+21. **A started coding session can do whatever its program can do** as the Windows user; the owner chooses the program in `config.json`, the confirmation card shows it. A weak RustDesk password is remote access for anyone inside the tailnet.
+22. **Home-LAN http is unencrypted:** after the owner ticks "my own network" the phone token crosses the home Wi-Fi in clear text. Anyone on that Wi-Fi who sniffs it can use it (until it is revoked).
+23. **The local model is small and untrusted:** it can only read and cannot confirm anything, but it can say wrong things; its answers are labelled with the model name.
+24. **A `viewer` phone can still see the screen** (screenshots) and process names; it cannot change anything. Treat a viewer pairing code like a password and revoke phones you no longer use. Tokens do not expire unless `token_ttl_days` is set.
+25. **`/health` is open to anyone who can reach the port** (computer name, battery, uptime, network state). The port is only bound on Tailscale/LAN/loopback addresses, but anyone inside the tailnet or LAN sees that much.

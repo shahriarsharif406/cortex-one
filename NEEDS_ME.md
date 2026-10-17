@@ -1,209 +1,218 @@
 # NEEDS_ME — শুধু আপনি যা করতে পারবেন (ক্রমানুসারে)
 
-সব কমান্ড **PowerShell**-এর জন্য। আগে `cd D:\cortex-one`। আমি (Claude) এই সেশনে কোনো API key, টোকেন, `.env`, আসল shutdown/lock/hibernate ছুঁইনি। যা যাচাই হয়নি তা প্রতিটি ধাপে ও শেষে স্পষ্ট লেখা আছে।
-
-শুরুর আগে (২ মিনিট): সব ঠিক আছে কিনা এক কমান্ডে দেখুন।
-
-```powershell
-cd D:\cortex-one
-.\scripts\install-git-hooks.ps1 -WhatIf      # (ঐচ্ছিক) commit-এর আগে গোপন তথ্য আটকানোর হুক
-.\scripts\check.ps1                            # টেস্ট + গোপন-তথ্য স্ক্যান + doctor; শেষে ALL CHECKS PASSED চাই
-```
-
-`WARN` লাইন স্বাভাবিক (key, SMS, অটো-স্টার্ট এখনো সেট নেই)। `FAIL` থাকলে আগে ঠিক করুন।
+সব কমান্ড **PowerShell**-এর জন্য। শুরুতে সবসময়: `cd D:\cortex-one`। আমি (Claude) এই সেশনে আপনার কোনো API key, টোকেন, TOTP সিক্রেট, `.env`, আসল shutdown/sleep/hibernate/lock, নেটওয়ার্ক অ্যাডাপ্টার, পাওয়ার সেটিং, ফায়ারওয়াল বা রেজিস্ট্রি ছুঁইনি; আসল মাউস/কিবোর্ড/ব্লুটুথ/SMS/ম্যাজিক প্যাকেটও না। যা যাচাই হয়নি তা প্রতিটি ধাপে ও শেষে (ন) অংশে স্পষ্ট লেখা আছে। **সব ধাপ এই ক্রমে করুন; ধাপের শেষে `python -m agent.main doctor` চালান।** আরও গোছানো ক্রম: `docs\SETUP_ORDER_BN.md`।
 
 ---
 
-## (ক) Anthropic API: ক্রেডিট, খরচের সীমা, key, প্রথম `ask`
+## (ক) `check.ps1`, API ক্রেডিট + খরচের সীমা, key, প্রথম `ask`
 
-1. https://console.anthropic.com → Billing: ক্রেডিট দিন (Claude.ai সাবস্ক্রিপশন আর API আলাদা)।
-2. **ওই key-র জন্য spending limit বসান** (যেমন মাসে ৫ ডলার)। Settings → API keys → নতুন key।
-3. key চ্যাটে/ফাইলে লিখবেন না। শুধু এই উইন্ডোর জন্য, লুকিয়ে টাইপ করে:
+```powershell
+cd D:\cortex-one
+.\scripts\check.ps1                      # টেস্ট + ভেক্টর + গোপন-তথ্য স্ক্যান + doctor + Flutter; শেষে ALL CHECKS PASSED চাই
+```
+
+`WARN` লাইন স্বাভাবিক (key, SMS, অটো-স্টার্ট এখনো নেই)। `FAIL` হলে আগে ঠিক করুন। "Skipped" লেখা থাকলে সেই অংশ যাচাই হয়নি।
+
+১. https://console.anthropic.com → Billing: ক্রেডিট দিন (Claude.ai সাবস্ক্রিপশন আর API আলাদা)।
+২. **key-র জন্য spending limit বসান** (যেমন মাসে ৫ ডলার)। Settings → API keys → নতুন key। key চ্যাটে বা ফাইলে লিখবেন না।
+৩. লুকিয়ে টাইপ করে (কেবল এই উইন্ডোর জন্য):
 
 ```powershell
 $k = Read-Host "Anthropic key" -AsSecureString
 $env:ANTHROPIC_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($k))
 Remove-Variable k
-.\.venv\Scripts\python -m agent.main ask --dry-run "ল্যাপটপের অবস্থা বলো"     # কিছু পাঠায় না; কী যাবে দেখায়
+.\.venv\Scripts\python -m agent.main ask --dry-run "ল্যাপটপের অবস্থা বলো"     # কিছু পাঠায় না, key পড়ে না
 .\.venv\Scripts\python -m agent.main ask "আমার ল্যাপটপের অবস্থা বলো"          # প্রথম আসল কল
-.\.venv\Scripts\python -m agent.main ask "Downloads-এর PDF ফাইলগুলো দেখাও"
 .\.venv\Scripts\python -m agent.main ask "ল্যাপটপ বন্ধ করো"                  # চলবে না! শুধু কনফার্মেশন চাইবে
 .\.venv\Scripts\python -m agent.main ai-usage
 .\.venv\Scripts\python -m agent.main ai-history
 ```
 
-4. খরচের আন্দাজ দেখতে Anthropic-এর **বর্তমান দাম** (কনসোল/প্রাইসিং পেজ থেকে, মিলিয়ন টোকেন প্রতি ডলার) নিজে `config.json`-এ বসান: `"ai_price_per_mtok_input": <দাম>`, `"ai_price_per_mtok_output": <দাম>`। না বসালে `ai-usage` লেখে "set prices in config"।
-5. স্থায়ী করতে চাইলে (রেজিস্ট্রিতে সাদা লেখায় থাকে — সচেতন ঝুঁকি; না করলে অটো-স্টার্ট এজেন্টে AI বন্ধ থাকবে, বাকি সব চলবে):
-   `[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $env:ANTHROPIC_API_KEY, "User")`
+৪. খরচের আন্দাজ: Anthropic-এর **বর্তমান দাম** নিজে `config.json`-এ বসান (`ai_price_per_mtok_input`, `ai_price_per_mtok_output`)।
+৫. স্থায়ী করতে চাইলে (রেজিস্ট্রিতে সাদা লেখায়; সচেতন ঝুঁকি): `[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $env:ANTHROPIC_API_KEY, "User")`।
 
-**অপরীক্ষিত:** আসল API কল। মডেলের নাম (`ai_model`), ক্রেডিট-শেষ ও অন্য ত্রুটির আসল বার্তা আমি শুধু নকল ও SDK-নকল HTTP দিয়ে দেখেছি। বাংলা নির্দেশ মডেল ঠিক বুঝবে কিনা (১৭টি টেস্ট শুধু তার-জোড়া প্রমাণ করে, মডেলের মান নয়) — নিজে কয়েকটি বাক্য চালিয়ে দেখুন।
+**অপরীক্ষিত:** আসল API কল (ছবি-সহ ও ছাড়া), মডেলের নাম `ai_model`, ক্রেডিট-শেষের আসল বার্তা, বাংলা নির্দেশ মডেল ঠিক বোঝে কিনা।
 
-## (খ) আসল Windows পরীক্ষা: lock, তারপর shutdown + ৩০ সেকেন্ডে cancel
+## (খ) আসল Windows পরীক্ষা: লক → শাটডাউন + ৩০ সেকেন্ডে cancel → স্লিপ ও জাগানো
 
-**আগে সব কাজ সেভ করুন।**
-
-উইন্ডো ১: `.\.venv\Scripts\python -m agent.main pair` (৬ অঙ্ক দেখাবে), তারপর `.\.venv\Scripts\python -m agent.main serve`
-উইন্ডো ২:
+**আগে সব কাজ সেভ করুন।** উইন্ডো ১: `python -m agent.main pair` তারপর `python -m agent.main serve`। উইন্ডো ২:
 
 ```powershell
 $u = "http://127.0.0.1:8765"
 $r = Invoke-RestMethod -Method Post "$u/pair" -ContentType application/json -Body '{"code":"<৬ অঙ্ক>","device_name":"test-pc"}'
 $h = @{ Authorization = "Bearer $($r.token)" }
 function Act($n,$b='{"params":{}}'){ Invoke-RestMethod -Method Post "$u/actions/$n" -Headers $h -ContentType application/json -Body $b }
+function Confirm2($n){ $c = Act $n; Act $n (@{ params = @{}; confirm_token = $c.confirm_token } | ConvertTo-Json) }
 
 Act system_info
-Act take_screenshot                   # তারপর: Invoke-RestMethod "$u/screenshots" -Headers $h
-Act lock                              # স্ক্রিন লক হলে ঠিক আছে (আনলক করে ফিরে আসুন)
-
-$c = Act shutdown                     # ধাপ ১: শুধু confirm_token দেয়, কিছু বন্ধ হয় না
-$body = (@{ params = @{}; confirm_token = $c.confirm_token } | ConvertTo-Json)
-Act shutdown $body                    # ধাপ ২ (৬০ সেকেন্ডের মধ্যে): ৩০ সেকেন্ডের কাউন্টডাউন শুরু
-Act cancel_shutdown                   # ৩০ সেকেন্ডের ভেতরে! "Shutdown cancelled." আসা উচিত
+Act lock                       # স্ক্রিন লক হলে ঠিক; আনলক করে ফিরুন
+Confirm2 shutdown              # ৩০ সেকেন্ডের কাউন্টডাউন শুরু
+Act cancel_shutdown            # ৩০ সেকেন্ডের ভেতরে! "Shutdown cancelled."
 ```
 
-`cancel_shutdown` কাজ না করলে সাথে সাথে `shutdown /a`। **hibernate** আলাদা পরীক্ষা: আগে `powercfg /a` (Hibernate চালু?); না থাকলে অ্যাডমিন PowerShell-এ `powercfg /hibernate on`; তারপর `Act hibernate` (দুই ধাপ)।
+`cancel_shutdown` কাজ না করলে সাথে সাথে `shutdown /a`। **স্লিপ ও জাগানো (আলাদা পরীক্ষা, কাজ সেভ করে):** `Confirm2 sleep` → ল্যাপটপ ঘুমাবে (`SetSuspendState`; হাইবারনেট চালু ও স্লিপ বন্ধ থাকলে Windows হাইবারনেট করতে পারে) → পাওয়ার বোতাম চেপে জাগান। **হাইবারনেট:** আগে `powercfg /a`; না থাকলে অ্যাডমিন PowerShell-এ `powercfg /hibernate on`; তারপর `Confirm2 hibernate`।
 
-**অপরীক্ষিত:** আসল shutdown/restart/hibernate/lock — টেস্টে শুধু FakeRunner।
+**অপরীক্ষিত:** আসল shutdown/restart/sleep/hibernate/lock — টেস্টে শুধু FakeRunner।
 
 ## (গ) লগইনে অটো-স্টার্ট
 
 ```powershell
-.\scripts\install-startup.ps1 -WhatIf          # কী করবে দেখায়, কিছু বদলায় না
+.\scripts\install-startup.ps1 -WhatIf        # কিছু বদলায় না
 .\scripts\install-startup.ps1
 Start-ScheduledTask -TaskName CortexOneAgent
 Get-Content $env:APPDATA\CortexOne\logs\agent.log -Tail 20
-.\.venv\Scripts\python -m agent.main doctor    # "অটো-স্টার্ট টাস্ক আছে" দেখা উচিত
-# বন্ধ/মুছতে:  .\scripts\uninstall-startup.ps1
 ```
 
-শুধু `-WhatIf` পর্যন্ত আমি পরীক্ষা করেছি; আসল ইনস্টল ও রিবুটের পর চালু হওয়া **অপরীক্ষিত**।
+রিবুট করে দেখুন এজেন্ট নিজে ওঠে। বন্ধ করতে `.\scripts\uninstall-startup.ps1`। **অপরীক্ষিত:** আসল ইনস্টল ও রিবুটের পর চালু হওয়া (শুধু `-WhatIf` দেখা হয়েছে)।
 
-## (ঘ) Tailscale — ল্যাপটপ, ফোন ও `host`
+## (ঘ) Tailscale: ল্যাপটপ, ডেস্কটপ, ফোন + `hosts`
 
-1. https://tailscale.com/download থেকে ল্যাপটপ ও ফোনে ইনস্টল, **একই অ্যাকাউন্টে** লগইন।
-2. ল্যাপটপে `tailscale ip -4` (যেমন `100.x.y.z`)।
-3. `notepad $env:APPDATA\CortexOne\config.json` → `"host": "100.x.y.z"` (**`0.0.0.0` নয়**)।
-4. এজেন্ট আবার চালু করে `.\.venv\Scripts\python -m agent.main doctor` ("host একটি Tailscale IP" দেখা উচিত)।
-5. ফোন না পৌঁছালে অ্যাডমিন PowerShell-এ (শুধু Tailscale রেঞ্জ):
-   `New-NetFirewallRule -DisplayName "Cortex One (Tailscale)" -Direction Inbound -Protocol TCP -LocalPort 8765 -RemoteAddress 100.64.0.0/10 -Action Allow`
-6. ফোন থেকে যাচাই: `Test-NetConnection 100.x.y.z -Port 8765` (ল্যাপটপ থেকে), অ্যাপে ঠিকানা `http://100.x.y.z:8765`।
+১. https://tailscale.com/download থেকে **তিনটিতেই** ইনস্টল, একই অ্যাকাউন্টে লগইন। ২. প্রতিটি কম্পিউটারে `tailscale ip -4` (যেমন `100.x.y.z`)। ৩. প্রতিটির `config.json` (`notepad $env:APPDATA\CortexOne\config.json`):
 
-অ্যাপ সাধারণ `http` শুধু Tailscale (100.64–127.x বা `*.ts.net`) ও লোকালহোস্টে নেয়; ঘরের Wi-Fi-র `192.168.x` ইচ্ছাকৃতভাবে নেয় না।
+```json
+"hosts": ["100.x.y.z"]
+```
 
-## (ঙ) Android SDK + `flutter build apk` (কম-মেমরি সেটিং), সাইনিং কী, ইনস্টল, পেয়ারিং
+বাসার LAN-এও চাইলে `"hosts": ["100.x.y.z", "192.168.1.20"]`। **`0.0.0.0` বা পাবলিক IP দিলে এজেন্ট চালুই হবে না** (ইচ্ছাকৃত)। ৪. এজেন্ট আবার চালু করে `doctor`: "bind ঠিকানা বৈধ" ও "Tailscale ঠিকানা আছে"। ৫. ফোন না পৌঁছালে অ্যাডমিন PowerShell: `New-NetFirewallRule -DisplayName "Cortex One (Tailscale)" -Direction Inbound -Protocol TCP -LocalPort 8765 -RemoteAddress 100.64.0.0/10 -Action Allow`। ৬. অ্যাপে কম্পিউটার যোগ করুন (ঠিকানা `http://100.x.y.z:8765`; বাড়তি LAN ঠিকানা দিলে "আমার নিজের নেটওয়ার্ক" টিক লাগে)।
 
-Flutter ৩.৩৫.৫ ইনস্টল আছে (`D:\flutter`), `flutter analyze` পরিষ্কার, ৯০টি টেস্ট পাস। **APK বানানো হয়নি।** `mobile\android\gradle.properties`-এ হিপ ১৫৩৬ MB, `daemon=false`, `workers.max=1` আগে থেকেই আছে। **বিল্ড ধীর (১০–২০ মিনিট)। ব্রাউজার/IDE বন্ধ রাখুন।**
+**অপরীক্ষিত:** আসল Tailscale-এ একাধিক ঠিকানায় বাইন্ড, বুটের সময় ঠিকানা দেরিতে ওঠার আচরণ।
 
-**সাইনিং কী (একবার):**
+## (ঙ) `doctor` ও `powercfg` wake পরীক্ষা (দুই কম্পিউটারেই), ডেস্কটপের BIOS-এ Wake-on-LAN
+
+```powershell
+.\.venv\Scripts\python -m agent.main doctor
+powercfg /devicequery wake_armed
+powercfg /devicequery wake_programmable
+ipconfig /all                       # Physical Address = MAC (শুধু নিজের কাছে রাখুন)
+```
+
+`doctor`-এর "wake via Wi-Fi/Ethernet: yes/no/unknown" আর অ্যাডাপ্টার তালিকা দেখুন। **ডেস্কটপ:** BIOS/UEFI-তে "Wake on LAN"/"Power On By PCI-E" চালু; Device Manager → নেটওয়ার্ক কার্ড → Power Management → "Allow this device to wake the computer" + "Only allow a magic packet"; **তারের (Ethernet)** সংযোগ। "yes" মানে শুধু Windows অনুমতি দিচ্ছে, রাউটার/BIOS/ঘুমের ধরন সাথে না দিলে জাগবে না। Wi-Fi দিয়ে বন্ধ/হাইবারনেট থেকে জাগা প্রায় অসম্ভব।
+
+## (চ) পাওয়ার প্ল্যান ও নেটওয়ার্ক অগ্রাধিকার স্ক্রিপ্ট (অ্যাডমিন PowerShell, আগে `-WhatIf`), SIM ব্যাকআপ
+
+```powershell
+.\scripts\set-power-plan.ps1 -WhatIf
+.\scripts\set-power-plan.ps1 -PowerButton Sleep -EnableHibernate     # ঢাকনা বন্ধে কিছু না, চার্জারে ঘুম নেই, ক্রিটিক্যালে হাইবারনেট
+
+Get-NetAdapter                                                       # নাম দেখুন (Wi-Fi, Ethernet 2 ...)
+.\scripts\setup-network-priority.ps1 -WhatIf
+.\scripts\setup-network-priority.ps1 -WifiAlias "Wi-Fi" -TetherAlias "Ethernet 2"
+```
+
+**SIM ব্যাকআপ:** পুরনো অ্যান্ড্রয়েডে SIM + USB টেদারিং (ফোনে Settings → Hotspot & tethering → USB tethering, তার লাগান) বা 4G ডঙ্গল। `config.json`-এ `"backup_adapter_name": "Ethernet 2"`। ঐচ্ছিক অটো-সুইচ (এজেন্ট নয়, আলাদা SYSTEM টাস্ক; ভুল করলে Wi-Fi বন্ধ থাকতে পারে, `-Remove` জানা রাখুন):
+
+```powershell
+.\scripts\install-network-failover.ps1 -WifiAlias "Wi-Fi" -TetherAlias "Ethernet 2" -WhatIf
+.\scripts\install-network-failover.ps1 -WifiAlias "Wi-Fi" -TetherAlias "Ethernet 2"
+# সরাতে:  .\scripts\install-network-failover.ps1 -Remove -WifiAlias "Wi-Fi"
+```
+
+**অপরীক্ষিত:** তিনটি স্ক্রিপ্টই (শুধু পার্স ও `ShouldProcess`-এর ভেতরে সব পরিবর্তন আছে এটুকু টেস্ট; আসলে চালানো হয়নি)।
+
+## (ছ) RustDesk
+
+`docs\REMOTE_DESKTOP_BN.md` পড়ে দুই দিকে ইনস্টল, "Direct IP access", **শক্ত স্থায়ী পাসওয়ার্ড + 2FA**। `config.json`:
+
+```json
+"allowed_apps": {"rustdesk": ["C:\\Program Files\\RustDesk\\rustdesk.exe"]},
+"remote_desktop_app": "rustdesk", "remote_desktop_process": "rustdesk"
+```
+
+অ্যাপে কম্পিউটারের ✏️ → RustDesk ID (পাসওয়ার্ড নয়)। **অপরীক্ষিত:** `rustdesk://` লিংক আসল ফোনে, সংস্করণ বের করা, `remote_desktop_start`।
+
+## (জ) `wake_targets` ও `wake_via`
+
+যে কম্পিউটার জাগাবে (সবসময় চালু একটি) তার `config.json`-এ: `"wake_targets": {"desktop": {"mac": "AA:BB:CC:DD:EE:FF", "broadcast": "192.168.1.255"}}` (নাম = অ্যাপে ডেস্কটপের নামের ছোট হাতের রূপ)। অ্যাপে ডেস্কটপের ✏️ → "যে কম্পিউটার একে জাগাবে" = ল্যাপটপ। **পরীক্ষা:** ডেস্কটপ **স্লিপে** দিয়ে অ্যাপে "জাগান" → "{ল্যাপটপ}-এর মাধ্যমে জাগান"; এক মিনিট পরে অবস্থা দেখুন। **অপরীক্ষিত:** আসল ম্যাজিক প্যাকেটে আসল ডেস্কটপ জাগা।
+
+## (ঝ) Cortex Wake: যন্ত্রাংশ কিনুন → বোতামের ধরন দেখুন → বানান → ফ্ল্যাশ → ক্যালিব্রেট → পরীক্ষা
+
+`docs\cortex-wake\BUILD_GUIDE_BN.md` (যন্ত্রাংশের তালিকা, ASCII তারের নকশা, বোতামের ধরনভেদে বসানো, সতর্কতা)। সংক্ষেপে: ESP32 + সার্ভো (SG90/MG90S) + পাওয়ার ব্যাংক + জাম্পার + টেপ; সার্ভো **পাওয়ার ব্যাংকের ৫V** থেকে (ESP32-র 3.3V নয়), সব GND একসাথে। অ্যাপে "Cortex Wake গেটওয়ে" → "নতুন চাবি তৈরি" (একবারই দেখায়) → `firmware\cortex-wake\include\secrets.h` বানান। PlatformIO/arduino-cli ইনস্টল করে:
+
+```powershell
+cd D:\cortex-one\firmware\cortex-wake
+pio run                         # কম্পাইল (এই ফার্মওয়্যার আজ পর্যন্ত কখনো কম্পাইল হয়নি; ত্রুটি আসতে পারে)
+pio run -t upload               # ESP32 USB দিয়ে লাগিয়ে
+pio device monitor
+```
+
+**প্রথম পরীক্ষা সার্ভো ল্যাপটপে না লাগিয়ে।** BOOT বোতাম চেপে (৬০ সেকেন্ড ক্যালিব্রেশন খোলে) কোণ ঠিক করুন। তারপর `scripts\set-power-plan.ps1` দিয়ে বোতাম = Sleep, ল্যাপটপে আটকে পরীক্ষা। **ল্যাপটপে ব্যাটারি/চার্জ ছাড়া কিছুই কাজ করবে না।** C++ হেডার (`cw_auth.h`) আমি সত্যিই চালিয়েছি (clang → WebAssembly → Node, ৫৪টি যাচাই, ০টি ব্যর্থ), কিন্তু `main.cpp`/ESP32/NimBLE/সার্ভো কখনো কম্পাইল বা চালানো হয়নি।
+
+## (ঞ) SMS গেটওয়ে ও TOTP
+
+**ল্যাপটপ এজেন্টের SMS:** `python -m agent.main sms-setup --totp +8801XXXXXXXXX` (gateway secret ও TOTP secret **একবারই** দেখায়; অথেনটিকেটরে যোগ করুন)। `STATUS 482913` ফরম্যাট; ল্যাপটপের ঘড়ি `w32tm /resync`। গেটওয়ে ফোনে SMS-ফরওয়ার্ডার অ্যাপ: URL `http://100.x.y.z:8765/sms/inbound`, হেডার `X-Gateway-Secret`, বডি `{"from":"...","text":"..."}`।
+
+**Cortex Wake-এর আলাদা ওয়েক সিক্রেট** (এজেন্টের SMS সিক্রেট থেকে ভিন্ন): পুরনো ফোনে Cortex One অ্যাপ → সেটিংস → "Cortex Wake গেটওয়ে": অনুমতি দিন (SMS পড়া/পাঠানো, ব্লুটুথ, নোটিফিকেশন — কেন লাগে পর্দাতেই লেখা), **শুধু নিজের নম্বর** অনুমোদিত তালিকায়, চাবি তৈরি, অথেনটিকেটরে ওয়েক সিক্রেট, "গেটওয়ে চালু করুন"। ফোন সবসময় চার্জারে, ব্যাটারি-সেভার বন্ধ (Unrestricted)। পরীক্ষার ক্রম: `STATUS` → `PRESS কোড FORCE` (সার্ভো ল্যাপটপে না লাগিয়ে) → `ON কোড`।
+
+**অপরীক্ষিত:** আসল SMS পথ, Kotlin `SmsReceiver`/`GatewayService` (কখনো কম্পাইল হয়নি), ফোন রিবুট/ব্যাটারি-নীতিতে সার্ভিস টিকে থাকা, Android ১৪-র ব্যাকগ্রাউন্ড-স্টার্ট নিয়ম, flutter_blue_plus দিয়ে আসল BLE।
+
+## (ট) APK বানানো (কম-মেমরি সেটিং), সাইনিং কী, ইনস্টল, পেয়ারিং
+
+Flutter (`D:\flutter`) আছে; আজ পর্যন্ত **APK বানানো হয়নি**। নতুন প্লাগইন যোগ হয়েছে (local_auth, connectivity_plus, flutter_blue_plus, image_picker, image, crypto) এবং Kotlin ফাইল ও `AndroidManifest`/থিম বদলেছে: **প্রথম বিল্ডে ত্রুটি আসতে পারে**। হিপ ১৫৩৬ MB, `daemon=false`, `workers.max=1` আগে থেকেই আছে। ব্রাউজার/IDE বন্ধ রাখুন; ১০–২০ মিনিট লাগে।
 
 ```powershell
 mkdir D:\keys
 keytool -genkey -v -keystore D:\keys\cortexone-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias cortexone
 copy D:\cortex-one\mobile\android\key.properties.example D:\cortex-one\mobile\android\key.properties
-notepad D:\cortex-one\mobile\android\key.properties     # পাসওয়ার্ড বসান; storeFile=D:/keys/cortexone-release.jks
-```
-
-`key.properties` ও `.jks` গিটে যায় না (gitignore + pre-commit হুক)। `.jks` ও পাসওয়ার্ডের ব্যাকআপ রাখুন; হারালে আপডেট দেওয়া যাবে না।
-
-**বিল্ড:**
-
-```powershell
-flutter doctor --android-licenses       # শর্ত নিজে পড়ে প্রতিটিতে y (Android SDK আগে ইনস্টল থাকতে হবে)
+notepad D:\cortex-one\mobile\android\key.properties        # পাসওয়ার্ড; storeFile=D:/keys/cortexone-release.jks
+flutter doctor --android-licenses
 cd D:\cortex-one\mobile
 flutter clean
 flutter pub get
-flutter build apk --release --target-platform android-arm64     # কম মেমরির জন্য শুধু arm64
-# ফাইল: build\app\outputs\flutter-apk\app-release.apk
+flutter build apk --release --split-per-abi --target-platform android-arm64
+adb install -r build\app\outputs\flutter-apk\app-arm64-v8a-release.apk
 ```
 
-মেমরি ত্রুটি হলে `docs\TROUBLESHOOTING.md`-এর ১২ নম্বর। **ফোনে ইনস্টল:** USB debugging চালু করে `adb install -r build\app\outputs\flutter-apk\app-release.apk` (বা APK ফোনে কপি করে খুলুন)।
-**পেয়ারিং:** ল্যাপটপে `.\.venv\Scripts\python -m agent.main pair` → অ্যাপে ঠিকানা `http://100.x.y.z:8765` ও ৬ অঙ্কের কোড।
+`.jks` ও পাসওয়ার্ডের ব্যাকআপ রাখুন (হারালে আপডেট দেওয়া যাবে না); `key.properties`/`.jks` গিটে যায় না। **ফোনে স্ক্রিন লক (পিন/আঙুলের ছাপ) থাকতে হবে**, নইলে কনফার্ম চলবে না। মেমরি ত্রুটি: `docs\TROUBLESHOOTING.md` ১২। পেয়ারিং: `python -m agent.main pair` (বা `--role viewer`) → অ্যাপে ঠিকানা ও কোড।
 
-**অপরীক্ষিত:** APK বিল্ড, আসল ফোনে UI, ভয়েস (বাংলা চলতে ফোনে Google Bengali ভয়েস ডাউনলোড থাকা ভালো), স্ক্রিন ও ওয়াচ ট্যাব, Keystore সাইনিং, release-এ key ছাড়া ইচ্ছাকৃত ব্যর্থতার Gradle শর্ত।
+**অপরীক্ষিত:** APK বিল্ড, আসল ফোনে UI, বায়োমেট্রিক প্রম্পট, ভয়েস (অফলাইন বাংলা প্যাক সহ), ছবি তোলা/বাছা, connectivity_plus-এর SIM চেনা, Android থিম বদল (`AppCompat`), Keystore সাইনিং।
 
-## (চ) SMS ফলব্যাক: TOTP + গেটওয়ে ফোন + কারেন্ট গেলে হটস্পট/USB টিথারিং
+## (ঠ) নোটিফায়ার ও `watch_rules`
 
-```powershell
-.\.venv\Scripts\python -m agent.main sms-setup --totp +8801XXXXXXXXX
-```
+পুশ (ঐচ্ছিক): `$topic = "cortex-" + [guid]::NewGuid().ToString("N").Substring(0,16)`; `[Environment]::SetEnvironmentVariable("CORTEX_NOTIFY_TARGET",$topic,"User")`; `config.json`-এ `"notifier_type": "ntfy"`; ফোনের ntfy অ্যাপে টপিক সাবস্ক্রাইব (টপিক পাসওয়ার্ডের মতো গোপন)। এখন নেটওয়ার্ক পাহারাদারের (`net_*`) ও কোডিং-সেশন শেষের সতর্কতাও এই পথে যায়।
 
-- **একবারই** দুটি জিনিস দেখায়: gateway secret ও TOTP secret (base32)। ফাইলে/চ্যাটে রাখবেন না। TOTP secret একটি অথেনটিকেটর অ্যাপে (Google Authenticator, Aegis…) "time-based, ৬ অঙ্ক, ৩০ সেকেন্ড" দিয়ে যোগ করুন।
-- SMS ফরম্যাট: `STATUS 482913` (কোড একবারই চলে)। ল্যাপটপের ঘড়ি ঠিক রাখুন: `w32tm /resync`।
-- গেটওয়ে: পুরনো অ্যান্ড্রয়েডে সিম + HTTP POST পাঠানো SMS-ফরওয়ার্ডার অ্যাপ। URL `http://100.x.y.z:8765/sms/inbound`, হেডার `X-Gateway-Secret: <secret>`, বডি `{"from":"<sender>","text":"<message>"}`। গেটওয়ে ফোনেও Tailscale চালু রাখুন।
-- **কারেন্ট গেলে:** রাউটার বন্ধ হবে। ল্যাপটপকে ফোনের **হটস্পটে** (Windows: Settings → Network → Wi-Fi) বা **USB টিথারিং-এ** (ফোনে Settings → Hotspot & tethering → USB tethering, তারপর তার লাগান) যুক্ত করুন; Tailscale আবার সংযুক্ত হলে অ্যাপ ও SMS কাজ করবে। আগে একবার অভ্যাস করে নিন।
-- পরীক্ষার ক্রম: `STATUS` → অন্যগুলো → `SHUTDOWN` সবার শেষে। ভুল কোডে ৩ বারের পর ১৫ মিনিট লকআউট।
-
-**অপরীক্ষিত:** আসল SMS পথ ও গেটওয়ে অ্যাপ, হটস্পটে Tailscale। (TOTP ও DPAPI আসল Windows-এ টেস্টে চলেছে।)
-
-## (ছ) নোটিফায়ার (ntfy/webhook) ও `watch_rules` সেটআপ
-
-**পুশ নোটিফায়ার (ঐচ্ছিক):**
-
-```powershell
-$topic = "cortex-" + [guid]::NewGuid().ToString("N").Substring(0,16)      # লম্বা, এলোমেলো; পাসওয়ার্ডের মতো গোপন
-[Environment]::SetEnvironmentVariable("CORTEX_NOTIFY_TARGET",$topic,"User")
-notepad $env:APPDATA\CortexOne\config.json                                  # "notifier_type": "ntfy"
-```
-
-ফোনে ntfy অ্যাপে ওই টপিক সাবস্ক্রাইব করুন (ntfy.sh তৃতীয় পক্ষ — তারা দেখবে কখন সতর্কতা গেল; বার্তায় শুধু ঘটনার নাম, সময়, ব্যাটারি %)। webhook হলে `"notifier_type": "webhook"` ও https URL একইভাবে `CORTEX_NOTIFY_TARGET`-এ।
-
-**কোডিং এজেন্ট ওয়াচ (`watch_rules`)** — `config.json`-এ উদাহরণ (আগে `watched_programs`-এ `"claude"` আর `allowed_logs`-এ `"coder"` থাকতে হবে; `target` হলো এই তালিকার **নাম**, পথ নয়):
+`watch_rules` (আগে `watched_programs`/`allowed_logs`-এ নাম):
 
 ```json
 "watched_programs": ["claude", "node"],
 "allowed_logs": {"coder": "C:\\Users\\<আপনি>\\AppData\\Local\\MyCodingAgent\\agent.log"},
 "watch_rules": [
-  {"name": "claude-done",  "kind": "process_exit", "target": "claude"},
-  {"name": "coder-stuck",  "kind": "log_stalled",  "target": "coder", "minutes": 15},
-  {"name": "coder-error",  "kind": "log_pattern",  "target": "coder", "pattern": "error"}
+  {"name": "claude-done", "kind": "process_exit", "target": "claude"},
+  {"name": "coder-stuck", "kind": "log_stalled", "target": "coder", "minutes": 15}
 ]
 ```
 
-```powershell
-.\.venv\Scripts\python -m agent.main doctor | Select-String "watch"        # "N watch rule(s) valid" চাই
-# এজেন্ট রিস্টার্ট করুন; তারপর ফোনে হোম → "ওয়াচ", অথবা:
-Invoke-RestMethod "$u/watch" -Headers $h
-```
+`doctor | Select-String "watch"`, এজেন্ট রিস্টার্ট, অ্যাপে হোম → "ওয়াচ"। **কোডিং সেশন** (ঐচ্ছিক): `coding_projects`-এ নাম, `path` (`allowed_roots`-এর ভেতরে), `argv`; `doctor` ভুল ধরে। **অপরীক্ষিত:** আসল ntfy/webhook, আসল কারেন্ট-কাট, আসল কোডিং এজেন্টের exit/stall।
 
-- `process_exit` তখনই বলে যখন প্রোগ্রামটি আগে অন্তত একবার চলতে দেখা গেছে। এজেন্ট শুরুর আগে থেকে বন্ধ থাকলে কিছু বলবে না।
-- একই রুল ১০ মিনিটের (`watch_cooldown_seconds`) মধ্যে দ্বিতীয়বার সতর্ক করে না; ৩০ সেকেন্ড পরপর চেক (`watch_check_seconds`)।
-- সতর্কতায় শুধু রুলের নাম ও নির্দিষ্ট বাক্য থাকে, লগের লেখা নয়।
+## (ড) "Cortex One" ও "Cortex Wake" নামের ট্রেডমার্ক/ডোমেইন
 
-**`critical_action`** (`"hibernate"`/`"lock"`) চালু করার আগে (খ)-এর hibernate পরীক্ষা করুন। এটাই একমাত্র জায়গা যেখানে টোকেন ছাড়া কিছু চলে (শুধু ব্যাটারিতে, ≤ক্রিটিক্যাল %, একবার)। প্রথমে `"none"` রেখে কিছুদিন সতর্কতা দেখুন।
+ডোমেইন (cortexone.com/.ai/.app) registrar-এ, ট্রেডমার্ক আপনার দেশের IP অফিস ও WIPO Global Brand Database-এ খুঁজুন; দরকারে আইনজীবী। (আমি যাচাই করিনি।)
 
-**অপরীক্ষিত:** আসল ntfy/webhook, আসল কারেন্ট-কাট, আসল কোডিং এজেন্টের exit/stall (টেস্টে নকল প্রসেস/ফাইল/ঘড়ি)।
+## (ঢ) ঐচ্ছিক বাড়তি: GUI মোড, লোকাল AI, viewer ফোন, টোকেনের মেয়াদ
 
-## (জ) "Cortex One" নামের ট্রেডমার্ক ও ডোমেইন
+- **GUI মোড (সবচেয়ে ঝুঁকির; আসল পর্দায় কখনো চালানো হয়নি):** `config.json`-এ `"gui_agent": {"enabled": true, "allowed_apps": ["notepad"], "max_session_minutes": 5, "max_actions": 30}`; অ্যাপ থেকে ছোট সেশন শুরু (আঙুলের ছাপ), **কাছে বসে**, নোটপ্যাডে। কিছু অস্বাভাবিক হলে বড় লাল STOP বা জরুরি স্টপ। ব্যাংক/পাসওয়ার্ড জানালা আটকানোর তালিকা **দুর্বল সুরক্ষা**; পাসওয়ার্ড-বক্স শনাক্তি শুধু ক্লাসিক Edit নিয়ন্ত্রণে। এই মোড ডিফল্টে বন্ধ রাখুন।
+- **লোকাল AI:** ৪ GB ল্যাপটপে কাজের মতো মডেল চলে না (মেমরি ও গতি); এটা **ডেস্কটপের জন্য, স্পেক দেখে** (RAM, GPU)। ইনস্টল আমি করিনি, কোনো মডেল নামাইনি। Ollama নিজে ইনস্টল করে `config.json`: `"ai_fallback_to_local": true, "ai_local_endpoint": "http://127.0.0.1:11434", "ai_local_model": "<মডেলের নাম>"`। শুধু ইন্টারনেট-ত্রুটিতে, শুধু ৫টি পড়ার টুলে। ছোট মডেল ভুল করতে পারে।
+- **viewer ফোন:** `python -m agent.main pair --role viewer`; হারালে `devices` তারপর `revoke <id>`। `token_ttl_days` (যেমন ৯০) বসাতে পারেন।
 
-- ডোমেইন: cortexone.com / .ai / .app registrar-এ দেখুন।
-- ট্রেডমার্ক: আপনার দেশের IP অফিস ও WIPO Global Brand Database-এ "Cortex One" খুঁজুন; দরকারে আইনজীবী। (আমি যাচাই করিনি।)
+## (ণ) স্বাধীন রিভিউয়ের (Phase 11) ফল ও যা ঠিক করা হয়নি
 
-## (ঝ) রিলিজ ও জানা ঝুঁকি
+(এই অংশ রিভিউয়ের পর পূরণ করা হয়েছে; নিচে দেখুন।)
 
-```powershell
-.\scripts\check.ps1
-.\scripts\make-release.ps1 -WhatIf
-.\scripts\make-release.ps1          # dist\cortex-one-1.0.0-rc1.zip + SHA-256 (শুধু গিটে ট্র্যাক করা ফাইল)
-```
+REVIEW_PLACEHOLDER
 
-**জানা ঝুঁকি** (বিস্তারিত `docs\THREAT_MODEL.md`):
+## (ত) জানা ঝুঁকি, আর যা **যাচাই হয়নি** (সৎ তালিকা)
 
-- **টোকেন চুরি গেলে** (ফোন হারালে) ফোন যা পারে হ্যাকারও তাই পারে: `.\.venv\Scripts\python -m agent.main devices` তারপর `revoke <id>`। ফোনে স্ক্রিন-লক রাখুন।
-- **স্থির পিন SMS-এ replay সুরক্ষা নেই** — TOTP ব্যবহার করুন।
-- **AI ভুল ফোল্ডার/ফাইল বেছে নিতে পারে** (অনুমোদিত সীমার ভেতরে)। কপি কখনো ওভাররাইট করে না; ডিলিট অ্যাকশন নেই। শুরুতে ফল চোখে দেখুন।
-- **স্ক্রিনশটে ব্যক্তিগত তথ্য** থাকতে পারে; Tailscale দিয়ে ফোনে যায়, কোথাও আপলোড হয় না।
-- **`run_script`** অনুমোদিত স্ক্রিপ্ট যা করে তাই করে — যা নিজে পড়ে বোঝেননি তা অনুমোদন করবেন না।
-- **Tailscale-এ http** (TLS নেই): WireGuard এনক্রিপ্ট করে, কিন্তু আপনার tailnet-এ অন্য ডিভাইস থাকলে ACL দিয়ে সীমিত করুন।
-- **ওয়াচার সতর্কতা নিশ্চয়তা নয়:** ল্যাপটপ ঘুমালে/এজেন্ট বন্ধ থাকলে/ntfy ডাউন থাকলে মিস হতে পারে।
-- **অপরীক্ষিত (সব মিলিয়ে):** আসল Anthropic কল, আসল shutdown/restart/hibernate/lock, আসল ফোন, আসল SMS গেটওয়ে, ntfy/webhook, APK বিল্ড, অটো-স্টার্ট ইনস্টল, PyInstaller বিল্ড।
+**ঝুঁকি** (বিস্তারিত `docs\THREAT_MODEL.md` ৫ নং): টোকেন চুরি গেলে ফোন যা পারে হ্যাকারও পারে (`devices` → `revoke <id>`; ফোনে স্ক্রিন-লক); স্থির পিন SMS-এ replay সুরক্ষা নেই (TOTP নিন); LAN-এ http এনক্রিপ্ট ছাড়া (টিক দেওয়ার পর); `/health` কেউ পোর্টে পৌঁছালে দেখে (নাম, ব্যাটারি); চালু ল্যাপটপে পাওয়ার বোতাম চাপলে স্লিপ/বন্ধ হতে পারে; USB-সেন্সর ভুল বলতে পারে; BLE ফ্রেম দেরিতে পৌঁছালে একবার গৃহীত হয়; GUI সেশন বিপজ্জনক; কোডিং সেশন যা করে তাই করে; viewer স্ক্রিনশট দেখতে পায়।
 
-## স্বাধীন রিভিউয়ের (Phase 7) যা ঠিক করা হয়নি
+**যা এখানে সত্যিই চালানো ও যাচাই হয়েছে:** `python -m pytest` (সংখ্যা শেষ রিপোর্টে), `flutter analyze` ও `flutter test`, `scripts\check.ps1`, Cortex Wake ভেক্টর পাইথন/Dart/C++(WebAssembly)-এ, প্রতিটি মিউটেশন-চেক (শেষ রিপোর্ট দেখুন)।
 
-স্বাধীন রিভিউ (নতুন চোখ, শুধু এই সেশনের পরিবর্তন) কোনো high-মাত্রার সমস্যা পায়নি। এই ছয়টি **ঠিক করা হয়েছে** (আগে টেস্ট, `tests/test_review_round2.py`): pre-commit স্ক্যান নকল `+++` লাইনে ফাঁকি দেওয়া যেত, ঘণ্টার-পর-ঘণ্টা আটকে দেওয়া যায় এমন লম্বা লাইন, `ai_history` অন্য ডিভাইসের জন্যও দেখা যেত (এখন ডিভাইস-ভিত্তিক), ২০০ অক্ষরে কাটার আগে scrub, "pin number is…/pin 1234" ধরনের লেখা, `GET /watch` আটকে থাকা টিকের পেছনে অপেক্ষা করত।
-
-**ঠিক করা হয়নি (কারণসহ):**
-1. **বড়/ঘন লগে মিলে যাওয়া মিস হতে পারে:** দুই চেকের মাঝে ২৫৬ KB-র বেশি লেখা হলে শুরুর অংশ বাদ যায়; লগ রোটেট হয়ে পুরনো অফসেটের চেয়ে বড় হলে ধরা পড়ে না; বহু-বাইট অক্ষরের মাঝখানে কাটলে মিল হারায়। ওয়াচার সতর্কতা নিশ্চয়তা নয় বলে গ্রহণযোগ্য ধরা হয়েছে।
-2. **`process_exit` শুধু প্রসেসের নামে মেলে:** `claude` নামের অন্য যেকোনো প্রসেস চললে রুল "চলছে" থাকে। কমান্ড লাইন পড়া ইচ্ছাকৃতভাবে নেই (গোপন তথ্যের ঝুঁকি)।
-3. **ওয়াচার `allowed_logs`-এর কাঁচা পথ খোলে** (symlink/junction/UNC অনুসরণ করে), `tail_log`-এর মতোই; পথ আপনার কনফিগ থেকে আসে। লগের লেখা কোথাও আউটপুটে যায় না।
-4. **pydantic-এর কাস্টম validator `msg`-এ মান ঢোকাতে পারে:** এখন অনির্ধারিত ক্ষেত্রে এমন validator নেই; নতুন validator যোগ করলে ৪২২ উত্তর আবার দেখুন।
-5. **PIN/পাসওয়ার্ড scrub সর্বোত্তম-চেষ্টা:** অস্বাভাবিক ভঙ্গিতে লিখলে (যেমন "আমার গোপন সংখ্যা চার আট দুই এক") ধরা পড়ে না। অ্যাপে PIN কখনো লিখবেন না।
+**যা যাচাই হয়নি (NOT verified):**
+- আসল Anthropic কল (ছবি-সহ ও ছাড়া, GUI স্ক্রিনশট tool-result সহ), আসল লোকাল মডেল;
+- আসল shutdown / restart / sleep / hibernate / lock / জাগানো (ম্যাজিক প্যাকেট আসল ডেস্কটপে);
+- আসল ফোন: APK বিল্ড, বায়োমেট্রিক, connectivity_plus, ভয়েস (অফলাইন বাংলা), ছবি তোলা, `rustdesk://` লিংক;
+- আসল SMS (এজেন্ট ও Cortex Wake), Kotlin `SmsReceiver`/`GatewayService`/`MainActivity` (কখনো কম্পাইল হয়নি), flutter_blue_plus BLE;
+- ESP32 ফার্মওয়্যার (`main.cpp`) কম্পাইল/ফ্ল্যাশ, সার্ভো, সেন্সর, পুরো হার্ডওয়্যার;
+- GUI মোডের আসল মাউস/কিবোর্ড/স্ক্রিন ক্যাপচার/ফোরগ্রাউন্ড-জানালা/পাসওয়ার্ড-বক্স শনাক্তি (ctypes কোড কখনো চালানো হয়নি);
+- অ্যাডমিন স্ক্রিপ্ট (`setup-network-priority`, `set-power-plan`, `network-failover`, `install-network-failover`) আসলে চালানো;
+- আসল `powercfg` আউটপুটের ভাষা/বিন্যাস (পার্সারে ইংরেজি আউটপুট ধরা), আসল Tailscale-এ বহু-ঠিকানা বাইন্ড;
+- ntfy/webhook, আসল কারেন্ট-কাট, অটো-স্টার্ট ইনস্টল, PyInstaller বিল্ড;
+- বাংলা ডকুমেন্টগুলো কোনো বাংলাভাষী পাঠক দিয়ে পড়ানো হয়নি।
