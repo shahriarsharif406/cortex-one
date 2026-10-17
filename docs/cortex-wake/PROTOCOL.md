@@ -96,8 +96,10 @@ Status: 0 OK, 1 BAD_ARGS (for example a press time out of range: nothing moved),
 
 * On boot the servo is attached gently and moved to `angle_rest` (soft start: a few degrees at a
   time). A press moves the same way. The servo is detached again a moment after it reaches rest.
-* The servo is never held at `angle_press` longer than 1500 ms plus a 500 ms margin: a watchdog sends
-  it back to rest on its own, even if the rest of the firmware hangs.
+* The servo is never held at `angle_press` longer than 1500 ms plus a 500 ms margin: a software check in
+  the main loop sends it back to rest. (It does not help if the whole program hangs inside a `delay()`;
+  the chip's own task watchdog would then reset the board.) A stored counter of 0xFFFFFFFF locks the
+  robot for good: re-flash it with a new key.
 * Defaults: rest 90°, press 70°. They are stored in flash after calibration.
 * **CALIBRATE is accepted only within 60 s after the physical BOOT button was pressed** (the LED
   blinks while calibration is open). Both angles must be between 10° and 170° and differ by at

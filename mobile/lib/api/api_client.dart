@@ -413,7 +413,7 @@ class HttpCortexApi implements CortexApi {
 
   @override
   Future<Health> health() async =>
-      Health.fromJson(_obj(await _send('GET', '/health', auth: false)));
+      Health.fromJson(_obj(await _send('GET', '/health')));
 
   @override
   Future<ActionRequestResult> requestAction(

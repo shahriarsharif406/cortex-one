@@ -56,7 +56,8 @@ class CwSession {
       final raw = await transport.exchange(frame, timeout);
       if (raw != null) {
         final r = cwParseResponse(raw, key, deviceId);
-        if (r == null) return const CwOutcome.failure('bad_answer');
+        // the answer must be signed AND be for this very command (a recorded answer is replayable)
+        if (r == null || r.counter != counter) return const CwOutcome.failure('bad_answer');
         await _counter.observe(r.counter);
         return CwOutcome.answer(r);
       }

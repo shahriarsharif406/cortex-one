@@ -55,6 +55,10 @@ Write-Host "Rule      : no internet on Wi-Fi for $FailMinutes min AND tether is 
 
 if ($PSCmdlet.ShouldProcess($dest, 'Create folder, copy script, lock permissions')) {
     New-Item -ItemType Directory -Path $dest -Force | Out-Null
+    # A folder or file that already existed may belong to a standard user (who could then edit
+    # the script the SYSTEM task runs): take ownership and reset every ACL below it first.
+    & icacls.exe $dest /setowner '*S-1-5-32-544' /T /C | Out-Null
+    & icacls.exe $dest /reset /T /C | Out-Null
     Copy-Item -Path $src -Destination $script -Force
     # remove inherited rights, then grant: SYSTEM + Administrators full, Users read and execute
     & icacls.exe $dest /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' | Out-Null

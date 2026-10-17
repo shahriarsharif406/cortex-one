@@ -483,7 +483,7 @@ class Orchestrator:
         params = getattr(block, "input", None)
         params = params if isinstance(params, dict) else {}
         tool_id = block.id
-        step = {"tool": name, "input": _short(params)}
+        step = {"tool": name, "input": _short(safe_params(name, params))}
 
         def reply(text: str, is_error: bool = False) -> dict[str, Any]:
             out = {"type": "tool_result", "tool_use_id": tool_id,

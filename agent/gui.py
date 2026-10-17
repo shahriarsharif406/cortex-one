@@ -92,6 +92,7 @@ class Backend(Protocol):
 
 class ForegroundProvider(Protocol):
     def get(self) -> Foreground | None: ...
+    def at_point(self, x: int, y: int) -> Foreground | None: ...   # the top window at a screen point
 
 
 # ----------------------------------------------------------------------- policy
@@ -188,6 +189,22 @@ def downscale_bgra(bgra: bytes, w: int, h: int, factor: int) -> tuple[int, int, 
         row = px[(y * factor) * w:(y * factor) * w + w]
         out.extend(row[::factor][:nw])
     return nw, nh, out.tobytes()
+
+
+def crop_bgra(bgra: bytes, w: int, h: int, rect: tuple[int, int, int, int]) -> tuple[int, int, int, int, bytes]:
+    """Cut the window's rectangle out of the screen: (offset_x, offset_y, new_w, new_h, pixels)."""
+    from array import array
+
+    left, top = max(0, rect[0]), max(0, rect[1])
+    right, bottom = min(w, rect[2]), min(h, rect[3])
+    if right - left < 8 or bottom - top < 8:
+        raise GuiError("The front window is too small to show.")
+    px = array("I")
+    px.frombytes(bgra[: w * h * 4])
+    out = array("I")
+    for y in range(top, bottom):
+        out.extend(px[y * w + left:y * w + right])
+    return left, top, right - left, bottom - top, out.tobytes()
 
 
 def encode_shot(width: int, height: int, bgra: bytes) -> tuple[str, bytes]:
@@ -338,19 +355,26 @@ class GuiController:
         return GuiError("The GUI action failed; the GUI session was ended.")
 
     # -- pictures -----------------------------------------------------------------
-    def _capture_small(self, s: GuiSession) -> tuple[str, bytes, int, int, int]:
-        w, h, bgra = self.backend().capture()
+    def _capture_small(self, s: GuiSession, rect: tuple[int, int, int, int]) -> tuple[str, bytes, int, int, int, int, int]:
+        """The picture is CUT to the front window: the model (and the Anthropic API) never see
+        what else is open on the screen. Returns media, data, w, h, factor, offset_x, offset_y."""
+        sw, sh, bgra = self.backend().capture()
+        ox, oy, w, h, bgra = crop_bgra(bgra, sw, sh, rect)
         factor = max(1, -(-max(w, h) // SHOT_MAX_SIDE))
         nw, nh, small = downscale_bgra(bgra, w, h, factor)
         media, data = self.encoder(nw, nh, small)
-        return media, data, nw, nh, factor
+        return media, data, nw, nh, factor, ox, oy
 
     def _save_shot(self, s: GuiSession) -> str:
-        media, data, nw, nh, factor = self._capture_small(s)
+        fg = self.foreground()
+        if fg is None or self.policy.why_not(fg, need_allowed=False):
+            raise GuiError("A window that must not be shown is in front.")
+        media, data, nw, nh, factor, ox, oy = self._capture_small(s, fg.rect)
         s.shots += 1
         name = f"gui-{s.id}-{s.shots}.{'jpg' if media == 'image/jpeg' else 'png'}"
         (self.shots_dir / name).write_bytes(data)
-        s.last_shot = {"file": name, "width": nw, "height": nh, "factor": factor, "media_type": media}
+        s.last_shot = {"file": name, "width": nw, "height": nh, "factor": factor, "media_type": media,
+                       "ox": ox, "oy": oy}
         self._prune()
         return name
 
@@ -365,13 +389,15 @@ class GuiController:
 
     # -- the actions ----------------------------------------------------------------
     def screenshot(self) -> dict[str, Any]:
-        s, _fg = self._begin("gui_screenshot", need_allowed=False)   # shown unless a blocked window is in front
+        s, fg = self._begin("gui_screenshot", need_allowed=False)   # shown unless a blocked window is in front
+        assert fg is not None
         try:
-            media, data, nw, nh, factor = self._capture_small(s)
+            media, data, nw, nh, factor, ox, oy = self._capture_small(s, fg.rect)
             with self._lock:
                 s.shots += 1
                 name = f"gui-{s.id}-{s.shots}.{'jpg' if media == 'image/jpeg' else 'png'}"
-                s.last_shot = {"file": name, "width": nw, "height": nh, "factor": factor, "media_type": media}
+                s.last_shot = {"file": name, "width": nw, "height": nh, "factor": factor, "media_type": media,
+                               "ox": ox, "oy": oy}
             self.shots_dir.mkdir(parents=True, exist_ok=True)
             (self.shots_dir / name).write_bytes(data)
             self._prune()
@@ -395,12 +421,21 @@ class GuiController:
         if not (0 <= x < shot["width"] and 0 <= y < shot["height"]):
             self._refused(s, "click", "outside the picture")
             raise GuiError(f"The point is outside the picture ({shot['width']}x{shot['height']}).")
-        rx, ry = x * shot["factor"], y * shot["factor"]
+        rx = x * shot["factor"] + shot.get("ox", 0)
+        ry = y * shot["factor"] + shot.get("oy", 0)
         sw, sh = self.backend().screen_size()
         left, top, right, bottom = fg.rect
         if not (0 <= rx < sw and 0 <= ry < sh) or not (left <= rx < right and top <= ry < bottom):
             self._refused(s, "click", "outside the front window")
             raise GuiError("The point is outside the window that is in front.")
+        # a topmost window (a banking page, a password manager) could sit over this point
+        try:
+            top_win = self._fg.at_point(rx, ry) if self._fg is not None else None
+        except Exception:
+            top_win = None
+        if self.policy.why_not(top_win, need_allowed=True):
+            self._refused(s, "click", "another window is on top of that point")
+            raise GuiError("Another window is on top of that point.")
         return rx, ry
 
     def click(self, x: int, y: int, double: bool = False) -> str | None:
@@ -617,10 +652,22 @@ class WindowsBackend:  # pragma: no cover - needs a real desktop
 class WindowsForeground:  # pragma: no cover - needs a real desktop
     def get(self) -> Foreground | None:
         import ctypes
+
+        return self._info(ctypes.windll.user32.GetForegroundWindow())  # type: ignore[attr-defined]
+
+    def at_point(self, x: int, y: int) -> Foreground | None:
+        import ctypes
         from ctypes import wintypes
 
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
-        hwnd = user32.GetForegroundWindow()
+        hwnd = user32.WindowFromPoint(wintypes.POINT(int(x), int(y)))
+        return self._info(user32.GetAncestor(hwnd, 2) if hwnd else None)      # 2 = GA_ROOT
+
+    def _info(self, hwnd) -> Foreground | None:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
         if not hwnd:
             return None
         buf = ctypes.create_unicode_buffer(300)

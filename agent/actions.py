@@ -558,7 +558,7 @@ def take_screenshot(ctx: Context, params: dict[str, Any]) -> ActionResult:
         else:
             note = " (low quality needs Pillow; saved as normal PNG)"
     prune(folder, keep)
-    return ActionResult(True, "Screenshot saved." + note, {"file": path.name, "folder": str(folder)})
+    return ActionResult(True, "Screenshot saved." + note, {"file": path.name})
 
 
 def check_url(url: str, allowed_domains: list[str]) -> str:

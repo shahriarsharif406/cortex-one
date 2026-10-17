@@ -23,7 +23,7 @@ def test_health_open_but_minimal(client):
     assert body["status"] == "ok" and body["version"] == __version__
     # names and coarse numbers only: no token, path, mac or config value
     assert set(body) == {"status", "version", "computer_id", "computer_name", "uptime_seconds",
-                         "battery", "link", "network", "last_power_request"}
+                         "battery", "link", "network"}   # no last_power_request for strangers
 
 
 def test_docs_and_schema_hidden(client):

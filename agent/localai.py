@@ -113,7 +113,8 @@ class LocalClient:
             raise LocalAIError("ai_local_model is not set.")
         self.model = model.strip()
         self.timeout = max(5.0, min(float(timeout), 300.0))
-        self._open = opener or urllib.request.build_opener(_NoRedirect).open
+        self._open = opener or urllib.request.build_opener(
+            urllib.request.ProxyHandler({}), _NoRedirect).open      # never through a proxy
         self.messages = self
         self._ids = 0
 

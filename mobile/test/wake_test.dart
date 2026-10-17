@@ -33,6 +33,7 @@ const parseNames = {
 };
 
 void main() {
+  reviewTests();
   // ------------------------------------------------------------ shared vectors
   group('shared test vectors (same file as Python and C++)', () {
     test('HMAC-SHA256 matches RFC 4231', () {
@@ -698,4 +699,54 @@ class _FlakyAfter implements CwTransport {
     if (good-- > 0) return answer;
     return null;
   }
+}
+
+// ---- findings of the independent review (each failed before its fix)
+class _ReplayOld implements CwTransport {
+  _ReplayOld(this.key, this.dev);
+  final Uint8List key, dev;
+
+  @override
+  Future<Uint8List?> exchange(Uint8List frame, Duration timeout) async =>
+      // a genuine, correctly signed answer, but for an OLD command (counter 3)
+      cwBuildResponse(key: key, deviceId: dev, status: 0, counter: 3, laptop: cwLaptopOff, servo: 0);
+}
+
+class _Silent implements CwTransport {
+  @override
+  Future<Uint8List?> exchange(Uint8List frame, Duration timeout) async => null;
+}
+
+void reviewTests() {
+  group('review: BLE session', () {
+    test('a signed answer to a DIFFERENT command is refused (replayed answers do not count)', () async {
+      final s = CwSession(
+        key: key,
+        deviceId: dev,
+        transport: _ReplayOld(key, dev),
+        counterStore: MemoryCwCounterStore(10),
+        timeout: const Duration(milliseconds: 10),
+      );
+      expect((await s.state()).failure, 'bad_answer');
+      expect((await s.press(400)).failure, 'bad_answer');
+    });
+
+    test('120 unanswered queries do not push the counter out of the device window', () async {
+      final store = MemoryCwCounterStore(0);
+      final s = CwSession(
+        key: key,
+        deviceId: dev,
+        transport: _Silent(),
+        counterStore: store,
+        timeout: const Duration(milliseconds: 1),
+      );
+      for (var i = 0; i < 120; i++) {
+        await s.state();
+      }
+      expect(store.value, lessThan(cwMaxJump ~/ 2));
+      final esp = SimulatedEsp32(key: key, deviceId: dev);
+      final back = CwSession(key: key, deviceId: dev, transport: esp, counterStore: store, timeout: const Duration(milliseconds: 10));
+      expect((await back.state()).response, isNotNull);
+    });
+  });
 }

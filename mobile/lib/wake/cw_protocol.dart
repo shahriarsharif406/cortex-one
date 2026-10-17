@@ -244,12 +244,19 @@ class CwCounter {
 
   /// After a device answered, never fall behind what it has seen.
   Future<void> observe(int deviceCounter) async {
+    _jumps = 0;
     if (deviceCounter > await _store.read()) await _store.write(deviceCounter);
   }
 
+  int _jumps = 0;
+
   /// A command timed out: it may have been dropped because the app's counter is behind (for
-  /// example after a reinstall). Jump ahead (within the firmware's allowed window).
+  /// example after a reinstall). Jump ahead (within the firmware's allowed window), but at most
+  /// 3 times without any answer in between: an unplugged robot must not be able to push the
+  /// counter out of the window by repeated STATUS requests.
   Future<void> jumpAhead([int by = 1000]) async {
+    if (_jumps >= 3) return;
+    _jumps++;
     final n = (await _store.read()) + by.clamp(1, cwMaxJump ~/ 2);
     if (n > 0xFFFFFFFF) throw StateError('counter exhausted: re-provision the device');
     await _store.write(n);

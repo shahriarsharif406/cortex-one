@@ -105,8 +105,8 @@ static void handleFrame(const uint8_t* frame, size_t len) {
   if (p.result != cw::OK) return;  // ignore silently: no reply, no change
 
   // 4. persist the counter BEFORE acting, so a reset can never allow a replay
+  if (prefs.putUInt("ctr", p.counter) == 0) return;   // not saved: do NOT act (a reset would reopen a replay)
   storedCounter = p.counter;
-  prefs.putUInt("ctr", storedCounter);
 
   switch (p.cmd) {
     case cw::PING:

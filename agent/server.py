@@ -102,14 +102,21 @@ def create_app(settings: Settings | None = None,
 
     MAX_TASK_BODY = 3 * MAX_B64_CHARS + 16_000          # three pictures plus the text
 
+    MAX_BODY = 64 * 1024                                # every other POST route
+
     @app.middleware("http")
-    async def cap_ai_body(request: Request, call_next):
-        """Refuse an oversized or length-less POST /ai/tasks BEFORE the body is read into memory."""
-        if request.method == "POST" and request.url.path == "/ai/tasks":
-            length = request.headers.get("content-length", "")
-            if not length.isdigit():
+    async def cap_body(request: Request, call_next):
+        """Refuse chunked or oversized POST bodies BEFORE they are read into memory (the body is
+        parsed before authentication, so this must not depend on a token). Only /ai/tasks may
+        carry pictures; every other route is small."""
+        if request.method == "POST":
+            if "transfer-encoding" in request.headers:     # a chunked body has no honest length
                 return JSONResponse(status_code=411, content={"detail": "Content-Length is required."})
-            if int(length) > MAX_TASK_BODY:
+            length = request.headers.get("content-length", "0")
+            if not (length.isascii() and length.isdigit()):
+                return JSONResponse(status_code=400, content={"detail": "Bad Content-Length."})
+            cap = MAX_TASK_BODY if request.url.path == "/ai/tasks" else MAX_BODY
+            if int(length) > cap:
                 return JSONResponse(status_code=413, content={"detail": "The request is too large."})
         return await call_next(request)
 
@@ -186,11 +193,16 @@ def create_app(settings: Settings | None = None,
         return {"summary": REGISTRY[action].description if action in REGISTRY else action}
 
     @app.get("/health")
-    def health(request: Request) -> dict[str, Any]:
-        """Unauthenticated and deliberately small: names, version, uptime, coarse battery,
-        which of our addresses this request used, network state. No tokens, paths or MACs."""
+    def health(request: Request, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        """Open and deliberately small: names, version, uptime, coarse battery, which of our
+        addresses this request used, network state. No tokens, paths or MACs. The last power
+        request (when the machine was put to sleep) is only for a phone with a valid token."""
         server = request.scope.get("server")
-        return engine.health(server[0] if server else None)
+        body = engine.health(server[0] if server else None)
+        token = authorization[7:].strip() if authorization and authorization.lower().startswith("bearer ") else None
+        if engine.pairing.authenticate(token) is None:
+            body.pop("last_power_request", None)
+        return body
 
     @app.get("/network")
     def network(device: Device = Depends(current_device)) -> dict:

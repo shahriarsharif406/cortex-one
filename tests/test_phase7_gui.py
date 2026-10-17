@@ -53,7 +53,11 @@ class FakeBackend:
 class FakeFg:
     def __init__(self, fg=NOTEPAD):
         self.fg = fg
+        self.point = None          # what is on top at a click point (default: the front window)
         self.boom = False
+
+    def at_point(self, x, y):
+        return self.point or self.fg
 
     def get(self):
         if self.boom:
@@ -376,8 +380,8 @@ def test_click_coordinates_must_be_plain_numbers(gx, x, y):
 
 def test_click_outside_the_front_window_is_refused(gx):
     start(gx)
-    shot(gx)
-    gx.fg.fg = Foreground("notepad", "Untitled - Notepad", (100, 100, 300, 300))
+    shot(gx)                                                     # picture of the whole 640x480 window
+    gx.fg.fg = Foreground("notepad", "Untitled - Notepad", (100, 100, 300, 300))   # the window moved
     assert not run(gx, "gui_click", x="10", y="10").ok          # taskbar / another window
     assert run(gx, "gui_click", x="150", y="150").ok
     assert gx.backend.calls == [("click", 150, 150, False)]
