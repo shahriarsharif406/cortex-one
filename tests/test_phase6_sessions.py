@@ -337,6 +337,7 @@ def test_exit_makes_an_alert_with_a_fixed_sentence(proj):
     run(proj, "coding_session_start", name="api")
     FakePopen.made[0].finish(7)
     assert wait_for(lambda: proj.alerts.recent(5, scope="watch"))
+    assert wait_for(lambda: sent and any(a["action"] == "coding_session_exit" for a in proj.audit.recent(10)))
     alert = proj.alerts.recent(5, scope="watch")[0]
     assert alert["kind"] == "watch_session_exit" and "exit code 7" in alert["message"]
     assert sent == ["Coding session 'api' ended (exit code 7)"]
