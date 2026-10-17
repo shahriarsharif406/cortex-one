@@ -25,6 +25,7 @@ from .actions import REGISTRY, ActionError, safe_params, validate_params
 from .engine import Engine
 from .gui import GUI_INPUT_TOOLS
 from .images import ImageBlock, content_blocks
+from .localai import LOCAL_NOTE, LOCAL_TOOLS, LocalAIError, LocalClient
 from .security import TooManyPending
 
 MAX_INSTRUCTION_LEN = 2000
@@ -145,6 +146,8 @@ class AITaskResult:
     pending_confirmations: list[dict[str, Any]] = field(default_factory=list)
     tokens_used: int = 0
     stopped_reason: str = ""
+    model: str = ""                  # which model produced the answer (cloud or local)
+    fallback: bool = False           # True when the local model answered because the cloud failed
 
 
 def capabilities(s: Any) -> dict[str, list[str]]:
@@ -189,6 +192,7 @@ class AITask:
     device_id: int
     actor: str
     images: list = field(default_factory=list)       # validated ImageBlock objects
+    local: bool = False                              # ai_provider = "local": read-only tools only
     result: AITaskResult = field(default_factory=lambda: AITaskResult(ok=False, reply=""))
 
 
@@ -201,11 +205,14 @@ GUI control is ON right now for a limited time (the owner approved it on the pho
 - If a GUI action is refused, do not try to get around it; report it."""
 
 
-def build_tools(gui_active: bool = False) -> list[dict[str, Any]]:
-    """Tools from the registry. The GUI input tools exist ONLY while a GUI session is active."""
+def build_tools(gui_active: bool = False, local: bool = False) -> list[dict[str, Any]]:
+    """Tools from the registry. The GUI input tools exist ONLY while a GUI session is active.
+    ``local=True`` (a local model): only the fixed read-only list, nothing else, ever."""
     tools = []
     for spec in REGISTRY.values():
         if spec.name in AI_TOOL_EXCLUDE:
+            continue
+        if local and (spec.name not in LOCAL_TOOLS or spec.risk == "high"):
             continue
         if spec.name in GUI_INPUT_TOOLS and not gui_active:
             continue
@@ -306,22 +313,32 @@ class Orchestrator:
         s = self.engine.settings
         if self.engine.ctx.stop_event.is_set():
             raise AIUnavailable("Emergency stop is active. Restart the agent to continue.")
-        if self._over_budget():
+        if s.ai_provider != "local" and self._over_budget():
             raise AIUnavailable("The daily AI budget is used up. It resets tomorrow.")
         images = list(images or [])
         if any(not isinstance(i, ImageBlock) for i in images):
             raise AIUnavailable("The pictures are not valid.")
-        self._check_image_budget(images)
-        client = self._client or make_client(s.ai_timeout_seconds)
+        local = s.ai_provider == "local"
+        if local:
+            if images:
+                raise AIUnavailable("Pictures are not available with the local model.")
+            try:
+                client = self._client or LocalClient(s.ai_local_endpoint, s.ai_local_model,
+                                                     s.ai_local_timeout_seconds)
+            except LocalAIError as exc:
+                raise AIUnavailable(str(exc))
+        else:
+            self._check_image_budget(images)
+            client = self._client or make_client(s.ai_timeout_seconds)
         if not self._busy.acquire(blocking=False):
             raise AIUnavailable("Another AI task is already running.")
         return AITask(instruction=instruction, client=client, device_id=device_id,
-                      actor=f"ai:{device_name}", images=images)
+                      actor=f"ai:{device_name}", images=images, local=local)
 
     def finish(self, task: "AITask") -> AITaskResult:
         try:
             self._loop(task.client, task.instruction, task.device_id, task.actor, task.result,
-                       task.images)
+                       task.images, local=task.local)
         finally:
             self._busy.release()
         result = task.result
@@ -367,36 +384,74 @@ class Orchestrator:
                 + where + "ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
         return [{**dict(r), "ok": bool(r["ok"])} for r in rows]
 
+    # ------------------------------------------------------------- local fallback
+    def _can_fallback(self, exc: BaseException) -> bool:
+        s = self.engine.settings
+        return (s.ai_fallback_to_local is True
+                and classify_failure(exc) in ("network", "timeout"))
+
+    def _fallback(self, instruction: str, device_id: int, actor: str, result: AITaskResult,
+                  images: list[ImageBlock] | None, cloud_error: BaseException) -> AITaskResult:
+        """The cloud is unreachable: run the task again from the start with the local model, read-only."""
+        s = self.engine.settings
+        try:
+            local = LocalClient(s.ai_local_endpoint, s.ai_local_model, s.ai_local_timeout_seconds)
+        except LocalAIError as exc:
+            return self._stopped(result, f"{failure_message(cloud_error)} (Local fallback is not "
+                                 f"available: {exc})")
+        self.engine.audit.log(actor, "ai", "ai_fallback", {"reason": classify_failure(cloud_error)},
+                              "ok", "cloud unreachable; using the local model (read-only)")
+        result.fallback = True
+        note = " (the pictures were not used)" if images else ""
+        out = self._loop(local, instruction, device_id, actor, result, None, local=True)
+        if out.reply and result.fallback:
+            out.reply = f"[Local model {local.model}, offline and read-only{note}] {out.reply}"
+        return out
+
     def _loop(self, client: Any, instruction: str, device_id: int,
               actor: str, result: AITaskResult,
-              images: list[ImageBlock] | None = None) -> AITaskResult:
+              images: list[ImageBlock] | None = None, local: bool = False) -> AITaskResult:
         s = self.engine.settings
+        result.model = getattr(client, "model", "") if local else s.ai_model
+        if local:
+            result.fallback = result.fallback or False
         first: Any = content_blocks(instruction, images) if images else instruction
         messages: list[dict[str, Any]] = [{"role": "user", "content": first}]
 
         step_no = 0
         while True:
             # the GUI tools exist only while a GUI session is active, with stricter limits
-            gui_on = self.engine.ctx.gui.active()
+            gui_on = (not local) and self.engine.ctx.gui.active()
             limit = min(s.ai_gui_max_steps, 40) if gui_on else s.ai_max_steps
             if step_no >= limit:
                 break
             step_no += 1
             if gui_on and result.tokens_used > s.ai_gui_task_token_cap:
                 return self._stopped(result, "The GUI task used too many tokens.")
-            tools = build_tools(gui_active=gui_on)
+            tools = build_tools(gui_active=gui_on, local=local)
             if self.engine.ctx.stop_event.is_set():
                 return self._stopped(result, "Stopped by emergency stop.")
-            if self._over_budget():
+            if not local and self._over_budget():
                 return self._stopped(result, "The daily AI budget ran out mid-task.")
             try:
                 response = client.messages.create(
                     model=s.ai_model, max_tokens=s.ai_max_output_tokens,
-                    system=SYSTEM_PROMPT + setup_note(s) + (GUI_NOTE if gui_on else ""),
+                    system=SYSTEM_PROMPT + setup_note(s) + (GUI_NOTE if gui_on else "")
+                    + (LOCAL_NOTE if local else ""),
                     tools=tools, messages=messages)
             except Exception as exc:  # never leak details (or keys) to the phone
+                if local:
+                    return self._stopped(result, str(exc) if isinstance(exc, LocalAIError)
+                                         else "The local model failed.")
+                if self._can_fallback(exc):
+                    return self._fallback(instruction, device_id, actor, result, images, exc)
                 return self._stopped(result, failure_message(exc))
-            result.tokens_used += self._record(getattr(response, "usage", None))
+            if local:   # free and offline: shown to the owner, not counted against the cloud budget
+                usage = getattr(response, "usage", None)
+                result.tokens_used += int(getattr(usage, "input_tokens", 0) or 0) + \
+                    int(getattr(usage, "output_tokens", 0) or 0)
+            else:
+                result.tokens_used += self._record(getattr(response, "usage", None))
 
             if getattr(response, "stop_reason", None) != "tool_use":
                 result.reply = _text_of(response).strip() or "Done."
@@ -407,7 +462,7 @@ class Orchestrator:
 
             messages.append({"role": "assistant", "content": response.content})
             gui_budget = [1]            # one GUI action per model turn, however many it asks for
-            tool_results = [self._run_tool(block, device_id, actor, result, gui_on, gui_budget)
+            tool_results = [self._run_tool(block, device_id, actor, result, gui_on, gui_budget, local)
                             for block in response.content
                             if getattr(block, "type", None) == "tool_use"]
             messages.append({"role": "user", "content": tool_results})
@@ -423,7 +478,7 @@ class Orchestrator:
 
     def _run_tool(self, block: Any, device_id: int, actor: str,
                   result: AITaskResult, gui_on: bool = False,
-                  gui_budget: list[int] | None = None) -> dict[str, Any]:
+                  gui_budget: list[int] | None = None, local: bool = False) -> dict[str, Any]:
         name = getattr(block, "name", "")
         params = getattr(block, "input", None)
         params = params if isinstance(params, dict) else {}
@@ -438,6 +493,8 @@ class Orchestrator:
             return out
 
         spec = REGISTRY.get(name)
+        if local and (name not in LOCAL_TOOLS or (spec is not None and spec.risk == "high")):
+            spec = None                 # a local model gets the read-only list and nothing else
         if spec is not None and name in GUI_INPUT_TOOLS:
             # not offered unless a session is active; refuse even if the model names it anyway
             if not gui_on or not self.engine.ctx.gui.active():

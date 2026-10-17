@@ -62,6 +62,14 @@ class Settings:
     # AI operator (Anthropic). The API key is read ONLY from the
     # ANTHROPIC_API_KEY environment variable, never from this file.
     ai_model: str = "claude-sonnet-5-5"
+    # "anthropic" (default) or "local" (a model on THIS computer, read-only tools only).
+    ai_provider: str = "anthropic"
+    # Offline fallback: when the cloud call fails with a NETWORK error, answer with the local
+    # model using only read-only tools. Off by default. Endpoint must be http://127.0.0.1:PORT.
+    ai_fallback_to_local: bool = False
+    ai_local_endpoint: str = ""
+    ai_local_model: str = ""
+    ai_local_timeout_seconds: float = 60.0
     ai_max_steps: int = 8
     ai_max_output_tokens: int = 1024
     ai_daily_token_cap: int = 200_000

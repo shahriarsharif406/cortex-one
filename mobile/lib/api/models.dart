@@ -170,7 +170,13 @@ class TaskStatus {
     required this.steps,
     required this.pending,
     required this.stoppedReason,
+    this.model = '',
+    this.fallback = false,
   });
+
+  /// Which model answered, and whether it was the local offline fallback.
+  final String model;
+  final bool fallback;
 
   final String id;
   final String status;
@@ -194,6 +200,8 @@ class TaskStatus {
         if (p is Map) PendingItem.fromJson(Map<String, dynamic>.from(p)),
     ],
     stoppedReason: (j['stopped_reason'] ?? '').toString(),
+    model: (j['model'] ?? '').toString(),
+    fallback: j['fallback'] == true,
   );
 }
 

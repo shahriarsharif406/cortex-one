@@ -291,6 +291,20 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
             out.append(Check(WARN, f"coding_projects সমস্যা: {prob}", f"coding_projects problem: {prob}"))
         if projects:
             out.append(Check(OK, f"{len(projects)}টি কোডিং প্রজেক্ট ঠিক আছে", f"{len(projects)} coding project(s) valid"))
+    from .localai import LocalAIError, check_local_endpoint
+
+    if settings.ai_provider not in ("anthropic", "local"):
+        out.append(Check(WARN, "ai_provider অবৈধ (anthropic বা local)", "ai_provider is invalid (anthropic or local)"))
+    if settings.ai_provider == "local" or settings.ai_fallback_to_local:
+        try:
+            check_local_endpoint(settings.ai_local_endpoint)
+            if not str(settings.ai_local_model or "").strip():
+                raise LocalAIError("ai_local_model is empty")
+            out.append(Check(OK, "লোকাল AI কনফিগার করা (শুধু পড়ার টুল)", "local AI is configured (read-only tools only)"))
+        except LocalAIError as exc:
+            out.append(Check(WARN, f"লোকাল AI কনফিগারেশনে সমস্যা: {exc}", f"local AI config problem: {exc}"))
+    else:
+        out.append(Check(OK, "লোকাল AI ফলব্যাক বন্ধ (ডিফল্ট)", "local AI fallback is off (default)"))
     from .gui import GuiPolicy
 
     gp = GuiPolicy.from_settings(settings)

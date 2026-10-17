@@ -73,7 +73,8 @@ def task_payload(result: AITaskResult) -> dict[str, Any]:
             "steps": list(result.steps),
             "pending_confirmations": list(result.pending_confirmations),
             "tokens_used": result.tokens_used,
-            "stopped_reason": result.stopped_reason}
+            "stopped_reason": result.stopped_reason,
+            "model": result.model, "fallback": result.fallback}
 
 
 class SmsInbound(BaseModel):

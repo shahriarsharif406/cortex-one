@@ -22,7 +22,10 @@ def run(orc, instruction="do it"):
 def test_tools_come_only_from_the_registry():
     tools = build_tools()
     names = {t["name"] for t in tools}
-    assert names == set(REGISTRY) - AI_TOOL_EXCLUDE
+    from agent.gui import GUI_INPUT_TOOLS
+    # the GUI input tools are offered only while a GUI session is active
+    assert names == set(REGISTRY) - AI_TOOL_EXCLUDE - GUI_INPUT_TOOLS
+    assert {t["name"] for t in build_tools(gui_active=True)} == set(REGISTRY) - AI_TOOL_EXCLUDE
     assert "emergency_stop" not in names          # human-only kill switch
     for t in tools:
         assert re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", t["name"])

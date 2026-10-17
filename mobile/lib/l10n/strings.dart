@@ -78,6 +78,10 @@ class S {
 }
 
 const Map<String, String> _bn = {
+  'answered_by':
+      'উত্তর দিয়েছে: {m}',
+  'answered_local':
+      'ইন্টারনেট নেই, তাই কম্পিউটারের লোকাল মডেল ({m}) উত্তর দিয়েছে। এটা শুধু পড়ার কাজ পারে, ছোট মডেল তাই ভুল হতে পারে।',
   'gui_title':
       'GUI সেশন (AI মাউস-কিবোর্ড চালাবে)',
   'gui_note':
@@ -601,6 +605,10 @@ const Map<String, String> _bn = {
 };
 
 const Map<String, String> _en = {
+  'answered_by':
+      'Answered by: {m}',
+  'answered_local':
+      'No internet, so the computer\'s local model ({m}) answered. It can only read, and a small model can be wrong.',
   'gui_title':
       'GUI session (the AI operates the mouse and keyboard)',
   'gui_note':

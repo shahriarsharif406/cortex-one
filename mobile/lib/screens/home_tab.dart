@@ -742,6 +742,15 @@ class _HomeTabState extends State<HomeTab> {
               const SizedBox(height: 8),
               Text(s.t('reply'), style: Theme.of(context).textTheme.labelLarge),
               SelectableText(task.reply, key: const Key('task_reply')),
+              if (task.model.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    s.tf(task.fallback ? 'answered_local' : 'answered_by', {'m': task.model}),
+                    key: const Key('task_model'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
             ],
           ],
         ),

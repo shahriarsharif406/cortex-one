@@ -165,4 +165,4 @@ def test_every_registered_action_is_either_low_risk_known_or_high(engine):
     # guard: a new high-risk action must never be silently executable by the AI
     high = {n for n, s in REGISTRY.items() if s.risk == "high"}
     assert high == {"shutdown", "restart", "run_script", "hibernate", "sleep", "coding_session_start",
-                    "coding_session_stop", "remote_desktop_start"}
+                    "coding_session_stop", "remote_desktop_start", "gui_session_start"}
