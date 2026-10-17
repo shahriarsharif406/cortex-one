@@ -72,6 +72,62 @@ class S {
 }
 
 const Map<String, String> _bn = {
+  'gw_menu':
+      'Cortex Wake গেটওয়ে (এই ফোন পাওয়ার-বোতাম রোবটের সাথে)',
+  'gw_title':
+      'Cortex Wake গেটওয়ে',
+  'gw_why':
+      'এই মোডে এই ফোনটি (SIM সহ, সবসময় চার্জে) আপনার অনুমোদিত নম্বর থেকে আসা "ON <কোড>" SMS শুনবে এবং ব্লুটুথে ESP32-কে পাওয়ার বোতাম চাপতে বলবে। তাই অ্যাপের দরকার: SMS পড়া (RECEIVE_SMS), একটি ছোট উত্তর SMS পাঠানো (SEND_SMS), ব্লুটুথ, এবং চলমান থাকার নোটিফিকেশন। অনুমোদিত নম্বর ছাড়া কারও SMS-এর উত্তর দেওয়া হয় না, SMS-এর লেখা কোথাও জমানো হয় না। যা অসম্পূর্ণ: হার্ডওয়্যার পরীক্ষা করা হয়নি; ফোনের ব্যাটারি/ব্যালেন্স/সিগন্যাল না থাকলে বা ল্যাপটপের ব্যাটারি শেষ হলে কাজ করবে না।',
+  'gw_perm_btn':
+      'অনুমতি দিন',
+  'gw_perm_ok':
+      'সব অনুমতি দেওয়া আছে',
+  'gw_perm_missing':
+      'অনুমতি বাকি আছে',
+  'gw_perm_denied':
+      'অনুমতি দেওয়া হয়নি, তাই গেটওয়ে চালু করা যাবে না।',
+  'gw_numbers_label':
+      'অনুমোদিত নম্বর (প্রতি লাইনে একটি)',
+  'gw_numbers_invalid':
+      'একটি নম্বর ঠিক নয়। যেমন: 01711111111 বা +8801711111111',
+  'gw_bind_label':
+      'এই ফোনের Tailscale ঠিকানা (ইন্টারনেট থেকে চালাতে; ঐচ্ছিক)',
+  'gw_bind_invalid':
+      'শুধু 127.x, Tailscale (100.64-127.x) বা বাসার LAN ঠিকানা চলবে; 0.0.0.0 কখনো নয়।',
+  'gw_create':
+      'নতুন চাবি তৈরি করুন',
+  'gw_create_warn':
+      'নতুন চাবি পুরনোগুলো বাতিল করে। ESP32-তে নতুন চাবি বসিয়ে আবার ফ্ল্যাশ করতে হবে এবং অথেনটিকেটরে নতুন সিক্রেট দিতে হবে।',
+  'gw_secrets_title':
+      'এই চাবিগুলো শুধু এখনই একবার দেখানো হচ্ছে',
+  'gw_secrets_once':
+      'কোথাও কপি করে রাখুন (কাগজে লিখুন)। অ্যাপ এগুলো আর দেখাবে না, লগে/SMS-এ পাঠাবে না।',
+  'gw_secret_wake':
+      'ওয়েক সিক্রেট (অথেনটিকেটর অ্যাপে টাইম-ভিত্তিক কী হিসেবে দিন; ল্যাপটপ এজেন্টের SMS সিক্রেট থেকে আলাদা)',
+  'gw_secret_fw':
+      'ফার্মওয়্যারের চাবি (firmware/cortex-wake/include/secrets.h-এ বসান)',
+  'gw_secret_token':
+      'HTTP টোকেন (অ্যাপে "গেটওয়ে টোকেন" ঘরে দিন)',
+  'gw_done':
+      'আমি লিখে রেখেছি',
+  'gw_start':
+      'গেটওয়ে চালু করুন',
+  'gw_stop':
+      'গেটওয়ে বন্ধ করুন',
+  'gw_running':
+      'গেটওয়ে চলছে',
+  'gw_stopped':
+      'গেটওয়ে বন্ধ',
+  'gw_need_setup':
+      'আগে নম্বর দিন এবং চাবি তৈরি করুন।',
+  'gw_save':
+      'সেভ করুন',
+  'gw_saved':
+      'সেভ হয়েছে',
+  'gw_log_title':
+      'সাম্প্রতিক ঘটনা (কোড, SMS-এর লেখা বা পূর্ণ নম্বর ছাড়া)',
+  'gw_log_empty':
+      'এখনো কিছু ঘটেনি',
   'state_online':
       'অনলাইন',
   'state_sleeping':
@@ -437,6 +493,62 @@ const Map<String, String> _bn = {
 };
 
 const Map<String, String> _en = {
+  'gw_menu':
+      'Cortex Wake gateway (this phone with the power-button robot)',
+  'gw_title':
+      'Cortex Wake gateway',
+  'gw_why':
+      'In this mode this phone (with a SIM, kept on a charger) listens for "ON <code>" SMS from your allowed numbers and tells the ESP32 over Bluetooth to press the power button. So the app needs: read SMS (RECEIVE_SMS), send one short reply (SEND_SMS), Bluetooth, and a visible notification to keep running. SMS from numbers not on your list get no reply, and SMS text is never stored. Not proven: the hardware is untested; it will not work if this phone has no battery, balance or signal, or if the laptop battery is empty.',
+  'gw_perm_btn':
+      'Grant permissions',
+  'gw_perm_ok':
+      'All permissions granted',
+  'gw_perm_missing':
+      'Permissions missing',
+  'gw_perm_denied':
+      'Permissions were not granted, so the gateway cannot start.',
+  'gw_numbers_label':
+      'Allowed numbers (one per line)',
+  'gw_numbers_invalid':
+      'A number is not valid. Example: 01711111111 or +8801711111111',
+  'gw_bind_label':
+      'This phone\'s Tailscale address (to use it over the internet; optional)',
+  'gw_bind_invalid':
+      'Only 127.x, Tailscale (100.64-127.x) or a home LAN address; never 0.0.0.0.',
+  'gw_create':
+      'Create new keys',
+  'gw_create_warn':
+      'New keys replace the old ones. You must put the new key into the ESP32 and flash it again, and enter the new secret in your authenticator.',
+  'gw_secrets_title':
+      'These keys are shown only now, once',
+  'gw_secrets_once':
+      'Write them down (on paper). The app will not show them again and never logs or sends them.',
+  'gw_secret_wake':
+      'Wake secret (add to an authenticator app as a time-based key; different from the laptop agent\'s SMS secret)',
+  'gw_secret_fw':
+      'Firmware key (put into firmware/cortex-wake/include/secrets.h)',
+  'gw_secret_token':
+      'HTTP token (enter it as "gateway token" in the computer settings)',
+  'gw_done':
+      'I wrote them down',
+  'gw_start':
+      'Start gateway',
+  'gw_stop':
+      'Stop gateway',
+  'gw_running':
+      'Gateway is running',
+  'gw_stopped':
+      'Gateway is off',
+  'gw_need_setup':
+      'First enter numbers and create the keys.',
+  'gw_save':
+      'Save',
+  'gw_saved':
+      'Saved',
+  'gw_log_title':
+      'Recent events (no codes, SMS text or full numbers)',
+  'gw_log_empty':
+      'Nothing yet',
   'state_online':
       'Online',
   'state_sleeping':

@@ -87,3 +87,25 @@ def test_http_error_from_the_api_is_contained(engine):
     r = Orchestrator(engine, client=client).run("hi", 1, "phone")
     assert not r.ok and "ANTHROPIC_API_KEY" in r.stopped_reason
     assert "sk-ant" not in r.reply + r.stopped_reason + str(engine.audit.recent(10))
+
+
+def test_pictures_are_serialised_as_image_blocks_by_the_real_sdk(engine):
+    import base64
+    import io
+
+    from PIL import Image
+
+    from agent.images import validate_images
+
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 32), (1, 2, 3)).save(buf, "PNG")
+    raw = base64.b64encode(buf.getvalue()).decode()
+    seen = []
+    client = sdk_client([message([{"type": "text", "text": "A small square."}], "end_turn")], seen)
+    r = Orchestrator(engine, client=client, today=lambda: "2026-10-17").run(
+        "what is it?", 1, "phone", validate_images([{"media_type": "image/png", "data": raw}]))
+    assert r.ok
+    content = seen[0]["body"]["messages"][0]["content"]
+    assert content[0] == {"type": "image", "source": {"type": "base64", "media_type": "image/png",
+                                                      "data": raw}}
+    assert content[1] == {"type": "text", "text": "what is it?"}

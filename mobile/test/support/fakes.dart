@@ -6,6 +6,7 @@ import 'package:cortex_one/api/api_client.dart';
 import 'package:cortex_one/api/health.dart';
 import 'package:cortex_one/api/wake_gateway_client.dart';
 import 'package:cortex_one/state/computer.dart';
+import 'package:cortex_one/wake/gateway_platform.dart';
 import 'package:cortex_one/state/device_services.dart';
 import 'package:cortex_one/api/models.dart';
 import 'package:cortex_one/app.dart';
@@ -316,6 +317,7 @@ class Harness {
     FakeBiometric? biometric,
     FakeLink? link,
     FakeGateway? gateway,
+    FakeGatewayPlatform? gatewayPlatform,
     List<Computer>? computers,
     Map<String, FakeApi>? apis,
   }) : api = api ?? FakeApi(),
@@ -324,6 +326,7 @@ class Harness {
       biometric = biometric ?? FakeBiometric(),
       link = link ?? FakeLink(),
       gateway = gateway ?? FakeGateway(),
+      gatewayPlatform = gatewayPlatform ?? FakeGatewayPlatform(),
       secrets = MemorySecretStore(),
       prefs = MemoryPrefsStore(),
       launched = [] {
@@ -344,6 +347,7 @@ class Harness {
       biometrics: this.biometric,
       links: this.link,
       gateway: this.gateway,
+      gatewayPlatform: this.gatewayPlatform,
       monitorEverySeconds: 0, // no periodic timer in widget tests
       launchUri: (uri) async {
         launched.add(uri);
@@ -360,6 +364,7 @@ class Harness {
   final FakeBiometric biometric;
   final FakeLink link;
   final FakeGateway gateway;
+  final FakeGatewayPlatform gatewayPlatform;
   final MemorySecretStore secrets;
   final MemoryPrefsStore prefs;
   final List<Uri> launched;

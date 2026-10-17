@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../screens/gateway_screen.dart';
 import '../state/app_state.dart';
 
 /// Language toggle, theme choice and "remove this phone".
@@ -31,6 +32,10 @@ class SettingsMenu extends StatelessWidget {
                 app.setThemeMode(ThemeMode.light);
               case 'dark':
                 app.setThemeMode(ThemeMode.dark);
+              case 'gateway':
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const GatewaySetupScreen()),
+                );
               case 'unpair':
                 final ok = await showDialog<bool>(
                   context: context,
@@ -64,6 +69,8 @@ class SettingsMenu extends StatelessWidget {
               value: 'dark',
               child: Text('${s.t('theme')}: ${s.t('theme_dark')}'),
             ),
+            if (showUnpair)
+              PopupMenuItem(value: 'gateway', child: Text(s.t('gw_menu'))),
             if (showUnpair)
               PopupMenuItem(value: 'unpair', child: Text(s.t('unpair'))),
           ],

@@ -17,6 +17,7 @@ from .actions import REGISTRY, ActionError, validate_params
 from .ai import (MAX_INSTRUCTION_LEN, AIUnavailable, AITask, AITaskResult,
                  Orchestrator, capabilities)
 from .config import Settings
+from .images import MAX_B64_CHARS, MAX_IMAGES, ImageError, validate_images
 from .engine import Engine
 from .security import (Device, LockoutTracker, PairingLocked, RateLimiter,
                        TooManyPending, verify_secret)
@@ -33,8 +34,17 @@ class ActionRequest(BaseModel):
     confirm_token: str | None = Field(default=None, max_length=64)
 
 
+class ImageIn(BaseModel):
+    model_config = {"extra": "forbid"}
+    media_type: str = Field(max_length=20)
+    data: str = Field(max_length=MAX_B64_CHARS)
+
+
 class AITaskRequest(BaseModel):
     instruction: str = Field(min_length=1, max_length=MAX_INSTRUCTION_LEN)
+    # up to 3 JPEG/PNG pictures, base64. The phone shrinks them and strips EXIF first; the agent
+    # re-checks everything and refuses rather than "fixes".
+    images: list[ImageIn] = Field(default_factory=list, max_length=MAX_IMAGES)
     # wait=true (default): answer when the task is done. wait=false: answer at
     # once with a job id and let the phone poll GET /ai/tasks/{id}.
     wait: bool = True
@@ -88,6 +98,19 @@ def create_app(settings: Settings | None = None,
     app = FastAPI(title="Cortex One Agent", docs_url=None, redoc_url=None,
                   openapi_url=None)
     app.state.engine = engine
+
+    MAX_TASK_BODY = 3 * MAX_B64_CHARS + 16_000          # three pictures plus the text
+
+    @app.middleware("http")
+    async def cap_ai_body(request: Request, call_next):
+        """Refuse an oversized or length-less POST /ai/tasks BEFORE the body is read into memory."""
+        if request.method == "POST" and request.url.path == "/ai/tasks":
+            length = request.headers.get("content-length", "")
+            if not length.isdigit():
+                return JSONResponse(status_code=411, content={"detail": "Content-Length is required."})
+            if int(length) > MAX_TASK_BODY:
+                return JSONResponse(status_code=413, content={"detail": "The request is too large."})
+        return await call_next(request)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -208,7 +231,13 @@ def create_app(settings: Settings | None = None,
         if not ai_limiter.allow(f"ai:{device.id}"):
             raise HTTPException(429, "Too many AI requests. Wait a minute.")
         try:
-            task = ai.begin(body.instruction, device.id, device.name)
+            images = validate_images([i.model_dump() for i in body.images])
+        except ImageError as exc:
+            engine.audit.log(f"device:{device.name}", "http", "ai_task", {"images": len(body.images)},
+                             "rejected", str(exc))
+            raise HTTPException(400, str(exc))
+        try:
+            task = ai.begin(body.instruction, device.id, device.name, images)
         except AIUnavailable as exc:
             raise HTTPException(503, str(exc))
         if body.wait:

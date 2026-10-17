@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api/api_client.dart';
 import '../api/failover_api.dart';
 import '../api/wake_gateway_client.dart';
+import '../wake/gateway_platform.dart';
 import '../l10n/strings.dart';
 import '../storage/stores.dart';
 import '../voice/voice_input.dart';
@@ -35,12 +36,14 @@ class AppState extends ChangeNotifier {
     BiometricGate? biometrics,
     LinkMonitor? links,
     WakeGatewayClient? gateway,
+    GatewayPlatform? gatewayPlatform,
     this.attemptTimeout = const Duration(seconds: 5),
     this.monitorEverySeconds = 20,
   }) : launchUri = launchUri ?? _defaultLaunch,
        biometrics = biometrics ?? LocalAuthGate(),
        links = links ?? NoLinkMonitor(),
-       gateway = gateway ?? HttpWakeGatewayClient();
+       gateway = gateway ?? HttpWakeGatewayClient(),
+       gatewayPlatform = gatewayPlatform ?? MethodChannelGatewayPlatform();
 
   static const _kComputers = 'computers';
   // Older single-computer builds stored these two. They are migrated, then deleted.
@@ -55,6 +58,7 @@ class AppState extends ChangeNotifier {
   final BiometricGate biometrics;
   final LinkMonitor links;
   final WakeGatewayClient gateway;
+  final GatewayPlatform gatewayPlatform;
   final Duration attemptTimeout;
   final int monitorEverySeconds;
 
