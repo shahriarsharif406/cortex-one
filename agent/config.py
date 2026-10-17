@@ -100,6 +100,9 @@ class Settings:
     watch_rules: list = field(default_factory=list)
     watch_check_seconds: int = 30
     watch_cooldown_seconds: int = 600
+    # Computers THIS computer may wake with Wake-on-LAN: {name: {"mac": "AA:BB:CC:DD:EE:FF",
+    # "broadcast": "192.168.1.255"}}. Empty = wake_computer is off.
+    wake_targets: dict = field(default_factory=dict)
     # Name of the SIM / USB-tether network adapter (doctor checks that it exists).
     backup_adapter_name: str = ""
     # Network watchdog (report only). Empty targets = the built-in two. "host:port".

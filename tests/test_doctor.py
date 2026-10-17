@@ -153,7 +153,7 @@ def test_doctor_tailscale_host(settings):
     settings.host = "127.0.0.1"
     assert WARN in levels(probe_checks(settings), "loopback")
     settings.host = "192.168.0.5"
-    assert WARN in levels(probe_checks(settings), "not in the Tailscale range")
+    assert WARN in levels(probe_checks(settings), "only a LAN IP")
 
 
 def test_doctor_notifier_presence_never_prints_values(settings):

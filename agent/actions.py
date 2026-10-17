@@ -86,6 +86,11 @@ class Context:
     # Injectable so tests never grab the real screen or open a real browser.
     screenshotter: Callable[[Path], None] | None = None
     url_opener: Callable[[str], Any] | None = None
+    # Wake-on-LAN: (packet bytes, broadcast address, port) -> None. Tests inject a fake socket.
+    wol_sender: Callable[[bytes, str, int], None] | None = None
+    wake_probe: Callable[[], dict[str, Any]] | None = None
+    wol_target_limiter: Any = None
+    wol_global_limiter: Any = None
 
     def run(self, cmd: list[str], timeout: float = 60) -> tuple[int, str]:
         fn = self.runner or self.processes.run
@@ -199,6 +204,15 @@ def hibernate(ctx: Context, params: dict[str, Any]) -> ActionResult:
     ctx.require_windows()
     code, out = ctx.run(["shutdown", "/h"], 10)
     return ActionResult(code == 0, "Hibernating." if code == 0 else f"Hibernate failed: {out}")
+
+
+def sleep(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    """Suspend to RAM. Windows runs hibernate instead when hibernation is on and sleep is off,
+    so the phone text says 'sleep or hibernate'. The computer can be woken again by a
+    Wake-on-LAN packet from another computer (if the hardware allows) or its power button."""
+    ctx.require_windows()
+    code, out = ctx.run(["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"], 10)
+    return ActionResult(code == 0, "Going to sleep." if code == 0 else f"Sleep failed: {out}")
 
 
 def cancel_shutdown(ctx: Context, params: dict[str, Any]) -> ActionResult:
@@ -435,10 +449,11 @@ def take_screenshot(ctx: Context, params: dict[str, Any]) -> ActionResult:
     ctx.require_windows()
     folder = resolve_allowed(str(ctx.settings.screenshots_dir), ctx.settings.allowed_roots)
     folder.mkdir(parents=True, exist_ok=True)
-    from .screenshots import NAME_RE, prune
+    from .screenshots import prune
     keep = _clamp_int(ctx.settings.screenshot_keep, 20, 1, MAX_SCREENSHOTS - 1)
     prune(folder, keep - 1)  # room for the new one
-    if sum(1 for p in folder.iterdir() if NAME_RE.fullmatch(p.name)) >= MAX_SCREENSHOTS:
+    if sum(1 for p in folder.iterdir()
+                                          if p.name.startswith("screenshot-") and p.suffix in (".png", ".jpg")) >= MAX_SCREENSHOTS:
         raise ActionError("The screenshots folder is full. Free some space; nothing is auto-deleted.")
     stamp = time.strftime("screenshot-%Y%m%d-%H%M%S")
     path = folder / f"{stamp}.png"
@@ -554,6 +569,109 @@ def tail_log(ctx: Context, params: dict[str, Any]) -> ActionResult:
                         {"log": name, "text": text, "truncated": cut, "untrusted": True})
 
 
+# ------------------------------------------------------------- Wake-on-LAN
+_MAC_RE = re.compile(r"^(?:[0-9A-Fa-f]{2}([:-]))(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}$|^[0-9A-Fa-f]{12}$")
+WOL_PORT = 9
+
+
+def parse_mac(text: Any) -> bytes:
+    """6 bytes from 'AA:BB:CC:DD:EE:FF', 'AA-BB-...' or 12 hex digits; otherwise ActionError."""
+    if not isinstance(text, str) or not text.isascii() or not _MAC_RE.fullmatch(text.strip()):
+        raise ActionError("That MAC address is not valid (expected AA:BB:CC:DD:EE:FF).")
+    raw = re.sub(r"[:-]", "", text.strip())
+    mac = bytes.fromhex(raw)
+    if mac == b"\x00" * 6 or mac == b"\xff" * 6:
+        raise ActionError("That MAC address is not valid.")
+    return mac
+
+
+def magic_packet(mac: bytes) -> bytes:
+    """6 x 0xFF followed by the MAC 16 times (102 bytes)."""
+    if len(mac) != 6:
+        raise ValueError("a MAC address has 6 bytes")
+    return b"\xff" * 6 + mac * 16
+
+
+def check_broadcast(addr: Any) -> str:
+    """Only 255.255.255.255 or the directed broadcast of a private LAN (x.y.z.255 style)."""
+    import ipaddress
+
+    from .netbind import classify_address
+
+    if not isinstance(addr, str) or not addr.isascii():
+        raise ActionError("That broadcast address is not allowed.")
+    try:
+        ip = ipaddress.IPv4Address(addr.strip())
+    except ValueError:
+        raise ActionError("That broadcast address is not allowed.")
+    if str(ip) == "255.255.255.255":
+        return str(ip)
+    if classify_address(str(ip)) != "lan" or int(ip) & 0xFF != 0xFF:
+        raise ActionError("The broadcast address must be 255.255.255.255 or a private LAN "
+                          "broadcast like 192.168.1.255.")
+    return str(ip)
+
+
+def wake_target(settings: Settings, name: str) -> tuple[bytes, str]:
+    """(mac bytes, broadcast) for a name in ``wake_targets``; the config is validated here
+    every time, so a bad entry can never be used."""
+    targets = settings.wake_targets if isinstance(settings.wake_targets, dict) else {}
+    table = {str(k).strip().lower(): v for k, v in targets.items()}
+    entry = table.get(name.strip().lower())
+    if not isinstance(entry, dict):
+        raise ActionError(f"'{_printable(name, 40)}' is not a wake target. "
+                          f"Known: {', '.join(sorted(table)) or 'none'}.")
+    return parse_mac(entry.get("mac")), check_broadcast(entry.get("broadcast", "255.255.255.255"))
+
+
+def _default_wol_sender(packet: bytes, broadcast: str, port: int) -> None:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.settimeout(3)
+        sock.sendto(packet, (broadcast, port))
+
+
+def wake_computer(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    name = params["name"]
+    mac, broadcast = wake_target(ctx.settings, name)      # allowlist first
+    if ctx.stop_event.is_set():
+        raise ActionError("Emergency stop is active. Restart the agent to continue.")
+    from .security import RateLimiter
+
+    if ctx.wol_target_limiter is None:
+        ctx.wol_target_limiter = RateLimiter(1, 15.0)       # one packet per target per 15 s
+        ctx.wol_global_limiter = RateLimiter(6, 60.0)       # at most 6 packets a minute in all
+    key = name.strip().lower()
+    if not ctx.wol_target_limiter.allow(key) or not ctx.wol_global_limiter.allow("all"):
+        raise ActionError("Wake requests are rate limited. Wait a little and try again.")
+    send = ctx.wol_sender or _default_wol_sender
+    try:
+        send(magic_packet(mac), broadcast, WOL_PORT)
+    except OSError as exc:
+        raise ActionError(f"Could not send the wake packet: {_printable(type(exc).__name__, 40)}.")
+    return ActionResult(True, f"Wake packet sent to '{key}'. This does not prove it woke up: "
+                        "check its status in a minute.", {"target": key})
+
+
+def power_capabilities(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    """What can wake THIS computer, plus the machines it can wake. Read-only, no MAC addresses."""
+    from . import wakeinfo
+
+    probe = ctx.wake_probe or wakeinfo.wake_capabilities
+    caps = probe()
+    targets = sorted(str(k).strip().lower() for k in
+                     (ctx.settings.wake_targets if isinstance(ctx.settings.wake_targets, dict) else {}))
+    data = {"known": bool(caps.get("known")),
+            "wifi_wake_from_sleep": caps.get("wifi_wake_from_sleep", "unknown"),
+            "ethernet_wake": caps.get("ethernet_wake", "unknown"),
+            "armed_devices": [_printable(d, 80) for d in caps.get("armed", [])][:20],
+            "can_wake_others": targets,
+            "summary": _printable(caps.get("summary", ""), 600)}
+    return ActionResult(True, data["summary"], data)
+
+
 # --------------------------------------------------------------- registry
 @dataclass(frozen=True)
 class ActionSpec:
@@ -574,6 +692,8 @@ REGISTRY: dict[str, ActionSpec] = {s.name: s for s in [
     # watcher at critical charge: see Engine.run_power_action and CLAUDE.md.
     ActionSpec("hibernate", "Hibernate the laptop (saves the session, then powers down)",
                "high", hibernate),
+    ActionSpec("sleep", "Put the computer to sleep (it can be woken again by a wake packet or "
+               "its power button)", "high", sleep),
     ActionSpec("cancel_shutdown", "Cancel a pending shutdown/restart", "low",
                cancel_shutdown),
     ActionSpec("emergency_stop", "Kill running tasks and cancel shutdown", "low",
@@ -601,6 +721,12 @@ REGISTRY: dict[str, ActionSpec] = {s.name: s for s in [
     ActionSpec("tail_log", "Last lines of an approved log by short name (read-only, "
                "untrusted text); optional lines 1-200", "low", tail_log, ("name",),
                ("lines",)),
+    ActionSpec("wake_computer", "Send a Wake-on-LAN packet to a named computer from "
+               "wake_targets (rate limited; cannot prove it woke)", "low", wake_computer,
+               ("name",)),
+    ActionSpec("power_capabilities", "What can wake this computer (Wi-Fi/Ethernet, from "
+               "Sleep) and which computers it can wake; honest, read-only", "low",
+               power_capabilities),
     ActionSpec("agent_watch", "Which approved watched programs are running, with "
                "start time and memory (read-only)", "low", agent_watch),
 ]}

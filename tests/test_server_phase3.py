@@ -44,7 +44,10 @@ SHUTDOWN_SCRIPT = lambda: [resp([tool_use("t1", "shutdown")], "tool_use"), resp(
 # ---------------------------------------------------------------- health / cors
 def test_health_has_version_and_nothing_else(engine, settings):
     http, _, _ = build(engine, settings, [])
-    assert http.get("/health").json() == {"status": "ok", "version": __version__}
+    body = http.get("/health").json()
+    assert body["status"] == "ok" and body["version"] == __version__
+    # session 2: names and coarse numbers only, never a token, path, MAC or config value
+    assert "token" not in str(body).lower() and "secret" not in str(body).lower()
 
 
 def test_cors_is_off(engine, settings):

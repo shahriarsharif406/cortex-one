@@ -122,6 +122,9 @@ def create_app(settings: Settings | None = None,
             return {"summary": f"Restart the laptop in {settings.shutdown_delay_seconds} seconds"}
         if action == "hibernate":
             return {"summary": "Hibernate the laptop now"}
+        if action == "sleep":
+            return {"summary": "Put the laptop to sleep now (wake it with a wake packet or its "
+                               "power button)"}
         return {"summary": REGISTRY[action].description if action in REGISTRY else action}
 
     @app.get("/health")
@@ -306,8 +309,9 @@ def create_app(settings: Settings | None = None,
     def screenshot_file(name: str, width: int | None = None, quality: str = "normal",
                         device: Device = Depends(current_device)) -> Response:
         try:
-            screenshots.parse_quality(quality)
-            data, mime = screenshots.load_screenshot(settings, name, width, quality)
+            # "low" / "normal" (data-saver); a plain number is the older JPEG-quality form
+            q = int(quality) if quality.isascii() and quality.isdigit() else screenshots.parse_quality(quality)
+            data, mime = screenshots.load_screenshot(settings, name, width, q)
         except screenshots.ScreenshotError as exc:
             raise HTTPException(exc.status, exc.message)
         except OSError:
