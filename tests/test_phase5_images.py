@@ -375,3 +375,15 @@ def test_async_job_with_pictures(engine, settings, http_client):
             break
     assert s["status"] == "ok"
     assert client.calls[0]["messages"][0]["content"][0]["type"] == "image"
+
+
+def test_picture_prepared_by_the_phone_app_is_accepted_by_the_agent():
+    """mobile/test/fixtures/prepared_sample.jpg was made by the Dart prepareImage (a 640x480
+    EXIF-rotated source). The agent's strict validator must accept exactly what the app produces."""
+    from pathlib import Path
+
+    sample = Path(__file__).resolve().parents[1] / "mobile" / "test" / "fixtures" / "prepared_sample.jpg"
+    data = sample.read_bytes()
+    block = validate_image("image/jpeg", b64(data))
+    assert (block.width, block.height) == (480, 640)          # turned upright by the app
+    assert b"Exif" not in data and b"Secret Camera" not in data

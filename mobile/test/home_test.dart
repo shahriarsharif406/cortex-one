@@ -245,6 +245,9 @@ void main() {
       final h = Harness();
       await h.pump(tester);
       await tester.ensureVisible(find.byKey(const Key('quick_lock')));
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('quick_lock')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('quick_lock')));
       await flush(tester);
       expect(h.api.calls, contains('action:lock'));
@@ -256,6 +259,9 @@ void main() {
       final h = Harness();
       await h.pump(tester);
       await tester.ensureVisible(find.byKey(const Key('quick_downloads')));
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('quick_downloads')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('quick_downloads')));
       await flush(tester);
       expect(h.api.actionParams.last, {'path': r'C:\Users\me\Downloads'});
@@ -270,6 +276,9 @@ void main() {
       h.api.caps = const Capabilities(allowedRoots: [r'C:\Users\me\Documents']);
       await h.pump(tester);
       await tester.ensureVisible(find.byKey(const Key('quick_downloads')));
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('quick_downloads')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('quick_downloads')));
       await flush(tester);
       expect(
@@ -283,6 +292,9 @@ void main() {
       final h = Harness();
       await h.pump(tester);
       await tester.ensureVisible(find.byKey(const Key('quick_apps')));
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('quick_apps')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('quick_apps')));
       await flush(tester);
       await tester.pump(const Duration(milliseconds: 400));
@@ -438,9 +450,9 @@ void main() {
 }
 
 class _ThrowingApi extends FakeApi {
-  _ThrowingApi({this.startError});
-
-  final Object? startError;
+  _ThrowingApi({Object? startError}) {
+    this.startError = startError;
+  }
 
   @override
   Future<ActionOutcome> runAction(
@@ -451,7 +463,7 @@ class _ThrowingApi extends FakeApi {
   }
 
   @override
-  Future<String> startTask(String instruction) async {
+  Future<String> startTask(String instruction, {List<TaskImage> images = const []}) async {
     throw startError ?? const ApiException(ApiErrorKind.network);
   }
 }

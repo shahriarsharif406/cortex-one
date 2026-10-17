@@ -143,6 +143,18 @@ def create_app(settings: Settings | None = None,
             return {"summary": f"Shut down the laptop in {settings.shutdown_delay_seconds} seconds"}
         if action == "restart":
             return {"summary": f"Restart the laptop in {settings.shutdown_delay_seconds} seconds"}
+        if action in ("coding_session_start", "coding_session_stop"):
+            from .sessions import parse_projects
+
+            project = parse_projects(settings)[0].get(str(params.get("name", "")).strip().lower())
+            verb = "Start" if action.endswith("start") else "Stop"
+            out = {"summary": f"{verb} the coding session '{params.get('name', '')}'"}
+            if project is not None and verb == "Start":
+                out["command"] = list(project.argv) + ["(in folder)", str(project.path)]
+            return out
+        if action == "remote_desktop_start":
+            return {"summary": "Start the remote desktop helper (RustDesk). This makes the computer "
+                               "reachable through it while it runs."}
         if action == "hibernate":
             return {"summary": "Hibernate the laptop now"}
         if action == "sleep":
@@ -199,6 +211,12 @@ def create_app(settings: Settings | None = None,
                 engine.audit.log(actor, "http", name, {}, "denied", str(exc))
                 raise HTTPException(400, str(exc))
             body.params = dict(clean)
+            from .sessions import precheck_high
+
+            problem = precheck_high(settings, name, body.params)
+            if problem:   # never ask the owner to confirm something that cannot run
+                engine.audit.log(actor, "http", name, body.params, "denied", problem)
+                raise HTTPException(400, problem)
             if not body.confirm_token:
                 try:
                     token = engine.confirmations.issue(device.id, name, body.params)

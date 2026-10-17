@@ -280,6 +280,24 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
         if rules:
             out.append(Check(OK, f"{len(rules)}টি watch rule ঠিক আছে", f"{len(rules)} watch rule(s) valid"))
 
+    # coding projects (names only; an invalid project is never started)
+    from .sessions import parse_projects
+
+    projects, project_problems = parse_projects(settings)
+    if not settings.coding_projects:
+        out.append(Check(OK, "coding_projects নেই (কোডিং সেশন বন্ধ)", "no coding_projects (coding sessions are off)"))
+    else:
+        for prob in project_problems:
+            out.append(Check(WARN, f"coding_projects সমস্যা: {prob}", f"coding_projects problem: {prob}"))
+        if projects:
+            out.append(Check(OK, f"{len(projects)}টি কোডিং প্রজেক্ট ঠিক আছে", f"{len(projects)} coding project(s) valid"))
+    rd = str(settings.remote_desktop_app or "").strip().lower()
+    if rd in {str(k).strip().lower() for k in settings.allowed_apps}:
+        out.append(Check(OK, "রিমোট ডেস্কটপ অ্যাপ allowed_apps-এ আছে", "the remote desktop app is in allowed_apps"))
+    else:
+        out.append(Check(WARN, "রিমোট ডেস্কটপ (RustDesk) allowed_apps-এ নেই; remote_desktop_start চলবে না",
+                         "the remote desktop app (RustDesk) is not in allowed_apps; remote_desktop_start will not run"))
+
     # wake capability, adapters, Tailscale, backup interface (MACs shown only here, locally)
     from . import wakeinfo
 

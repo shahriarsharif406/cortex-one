@@ -1,9 +1,26 @@
 /// Plain data classes for the Cortex One agent API. No secrets live here.
 library;
 
+import 'dart:typed_data';
+
 Map<String, String> _stringMap(dynamic v) {
   if (v is! Map) return const {};
   return {for (final e in v.entries) e.key.toString(): e.value.toString()};
+}
+
+/// A picture sent with an AI task: always an already shrunk, metadata-free JPEG.
+class TaskImage {
+  const TaskImage({
+    required this.mediaType,
+    required this.bytes,
+    this.width = 0,
+    this.height = 0,
+  });
+
+  final String mediaType;
+  final Uint8List bytes;
+  final int width;
+  final int height;
 }
 
 class ActionOutcome {

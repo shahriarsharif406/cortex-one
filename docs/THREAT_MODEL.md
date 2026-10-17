@@ -119,6 +119,53 @@ Tokens only in secure storage; plain http only to Tailscale/loopback; emergency 
 
 **Privilege separation of the failover task.** The agent runs as the logged-in standard user. Disabling a network adapter needs administrator rights, so it is NOT an agent action and the agent has no code path to it. `scripts/network-failover.ps1` is a separate SYSTEM scheduled task, installed by the owner with `install-network-failover.ps1`. The installer copies the script into `%ProgramData%\CortexOne\failover\` and removes inherited rights so only Administrators/SYSTEM can write there; ordinary users (and so the agent, and anything it could be tricked into running) can only read it. If the script sat in a user-writable folder, anything that could write to the agent's folder could get SYSTEM. The script takes no value from the network: adapter names are fixed at install time and pattern-checked; probe targets are fixed IP addresses; it only re-enables an adapter it disabled itself; if the tether has no internet either it re-enables Wi-Fi at once. Residual risk: an administrator who edits the script or task controls it; a malfunction can leave Wi-Fi disabled until the next retest (15 min) or until `install-network-failover.ps1 -Remove -WifiAlias <name>`.
 
+### 4.10 Phone app with several computers (session 2)
+| Control | Test |
+|---|---|
+| Read-only calls fail over Tailscale -> LAN with short timeouts. A call that CHANGES something goes to exactly one address and is never retried on another (a timeout does not prove the first did not receive it) | `computers_test.dart` group `FailoverApi` |
+| Plain http to a home-LAN address needs a per-computer "this is my own network" tick (the token is then unencrypted on that Wi-Fi); public http stays refused | `computers_test.dart` group `addresses`, `pairing a second computer with a LAN address needs the acknowledgement` |
+| Sleep / hibernate / shutdown / restart (and confirming an AI request) need the phone's biometric or screen lock first; a refused prompt sends nothing and burns no token | `computers_test.dart` groups `power card`, `every confirmation needs the biometric` |
+| Tokens, addresses, gateway tokens only in secure storage; plain prefs hold only a last-seen note (time, battery, last power request) | `home_test.dart` (prefs test), `gateway_screen_test.dart` |
+| The state badge says only what the phone can know: "probably asleep" after a sleep request, never "asleep" as a fact | `computers_test.dart` group `classifyPower` |
+| Data-saver (SIM): low-quality screenshots, no auto-refresh, no background polling | `computers_test.dart` group `data saver` |
+
+### 4.11 Cortex Wake: SMS gateway phone and BLE power-button robot (session 2)
+New channels: SMS into an old Android phone, BLE from that phone to an ESP32, and a small HTTP listener on the gateway phone.
+
+| Control | Test |
+|---|---|
+| Every BLE frame carries a 16-byte HMAC-SHA256 tag over device id, counter, command and arguments; wrong tag, wrong key or wrong device id is ignored without any answer | `wake_test.dart` shared vectors, `tests/test_cortex_wake.py::test_every_single_byte_change_is_rejected` |
+| Strictly increasing counter, saved BEFORE the servo moves; replays and out-of-window counters are ignored; the tag is checked before the counter (no oracle) | vectors `replay_*`, `jump_too_far`, `bad_tag_and_old_counter`; `wake_test.dart` `a recorded frame cannot be replayed` |
+| The same vectors pass in Python (reference), Dart (app) and C++ (firmware header, compiled to WebAssembly and run in Node) | `test_cortex_wake.py`, `wake_test.dart`, `firmware/cortex-wake/test/run_cpp_vectors.py` |
+| Press time is capped in firmware (100..1500 ms, refused not clamped); calibration only within 60 s after the physical BOOT button | `test_firmware_main_follows_the_documented_order`, simulator tests |
+| PRESS is never retried after a lost answer (it may have pressed) | `wake_test.dart` `a lost answer to PRESS is NOT retried` |
+| SMS: allowlist (numbers normalised), unknown senders get silence and cost no code, TOTP from a separate wake secret with replay protection that survives restarts, lockout after 3 wrong codes, Bangla digits, no SMS text/code/full number in the log | `wake_test.dart` group `gateway controller`, `gateway_screen_test.dart` group `gateway runtime` |
+| State-aware press: ON laptop is not pressed (unless PRESS ... FORCE); unknown state needs FORCE | `wake_test.dart` |
+| The HTTP listener never binds 0.0.0.0 or a public address, needs a bearer token, locks out a client after 5 wrong tokens | `wake_test.dart` group `gateway HTTP listener` |
+| The wake secret, BLE key and HTTP token are shown once and kept only in the secure store | `gateway_screen_test.dart` |
+
+Residual risks: SMS sender numbers can be spoofed on some networks (the TOTP code is the real gate and a spoofed sender only makes the reply go to the real owner); a BLE frame blocked and delivered later is still accepted once; the foreground service may be killed by the phone maker's battery rules; Android may refuse to start the service from the background after a reboot; pressing the power button of a running laptop can sleep or shut it down; the state sensor can be wrong on laptops that keep USB powered. **The hardware, the Kotlin service and the BLE client were never run.**
+
+### 4.12 Picture input to the AI (session 2)
+| Control | Test |
+|---|---|
+| At most 3 pictures, JPEG or PNG, at most 1.5 MB each after decoding; the declared type, the magic bytes and the file structure must agree; sane dimensions; refused on any doubt | `test_phase5_images.py` (validation block) |
+| Metadata is REFUSED, never silently stripped: JPEG APP1/EXIF/XMP/comment blocks and PNG text/time/EXIF chunks make the whole task fail. The phone strips them first | `test_metadata_is_refused_not_stripped`, `pictures_test.dart`, `test_picture_prepared_by_the_phone_app_is_accepted_by_the_agent` |
+| The request body is capped before it is read (413) and a length-less upload is refused (411) | `test_oversized_request_is_refused_before_it_is_read` |
+| Pictures cost tokens on every step, so the worst case (estimated image tokens x max steps) is checked against the per-task and daily caps before the task starts | `test_pictures_are_counted_against_*` |
+| Text inside a picture is untrusted: the system prompt says so, and a model that "obeys" it can still only create a pending confirmation or hit the allowlists | `test_text_inside_a_picture_*` |
+| Image bytes never reach logs, audit, history, alerts, responses or the CLI; history stores only "+N images" | `test_image_bytes_never_reach_logs_audit_history_or_responses` |
+
+### 4.13 Coding sessions and the remote-desktop helper (session 2)
+| Control | Test |
+|---|---|
+| The phone and the AI only name a project. The program, arguments and folder come from the owner's `coding_projects`; the folder must be inside `allowed_roots`; invalid entries are dropped and never run | `test_phase6_sessions.py` (config and start blocks) |
+| `coding_session_start`, `coding_session_stop`, `remote_desktop_start` are high-risk: two-step confirmation over HTTP; the AI can only request; the confirmation card shows the exact command and folder; a request that cannot run is refused before any confirmation is asked | `test_start_needs_the_two_step_confirmation_over_http`, `test_confirmation_card_shows_the_exact_command_and_folder`, `test_the_ai_is_not_asked_to_confirm_what_cannot_run` |
+| Sessions are started by the same ProcessManager as `run_script` (shell=False, own console), so `emergency_stop` ends them; stopping works only on sessions this agent started | `test_emergency_stop_ends_sessions_and_blocks_new_ones`, `test_stop_only_touches_sessions_this_agent_started` |
+| `coding_session_list` and `remote_desktop_status` are read-only and reveal no command line, path, password or config of RustDesk | `test_list_shows_states_without_commands_or_paths`, `test_status_does_not_touch_the_runner_or_any_file` |
+
+Residual risks: the owner decides what `argv` runs, so a bad config entry is the owner's risk (the confirmation card shows it); a started session can do whatever that program can do as the Windows user; RustDesk with a weak password is remote access for anyone inside the tailnet.
+
 ## 5. Residual risks (accepted or open)
 
 1. **Stolen unlocked phone or stolen token** - the thief can do everything the owner's phone can, including requesting confirmations and confirming them. Mitigation is operational: revoke the device (`revoke <id>`), lock the phone, keep the Android screen lock on.

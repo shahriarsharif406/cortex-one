@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../images/image_prep.dart';
 import '../state/app_state.dart';
 import '../state/pending_controller.dart';
 import '../widgets/computer_status_card.dart';
 import '../widgets/power_card.dart';
+import '../widgets/tools_card.dart';
 import 'alerts_screen.dart';
 import 'watch_screen.dart';
 
@@ -44,6 +46,8 @@ class _HomeTabState extends State<HomeTab> {
   bool _timedOut = false;
   bool _disposed = false;
 
+  final List<TaskImage> _pictures = [];
+  String? _pictureError;
   bool _listening = false;
   bool _voiceFailed = false;
   String? _voiceLocale; // bn_BD | en_US
@@ -112,7 +116,7 @@ class _HomeTabState extends State<HomeTab> {
       _timedOut = false;
     });
     try {
-      final id = await widget.api.startTask(instruction);
+      final id = await widget.api.startTask(instruction, images: List.of(_pictures));
       var polls = 0;
       while (!_disposed) {
         await Future<void>.delayed(widget.pollInterval);
@@ -126,11 +130,30 @@ class _HomeTabState extends State<HomeTab> {
         }
       }
       widget.pending.refresh();
+      if (!_disposed) setState(_pictures.clear);
     } catch (e) {
       await app.onError(e);
       if (!_disposed) setState(() => _taskError = app.s.error(e));
     } finally {
       if (!_disposed) setState(() => _running = false);
+    }
+  }
+
+  // --------------------------------------------------------------- pictures
+  Future<void> _attach(bool camera) async {
+    final app = AppScope.read(context);
+    if (_pictures.length >= 3) return;
+    final raw = await (camera ? app.pictures.pickCamera() : app.pictures.pickGallery());
+    if (raw == null || !mounted) return;
+    try {
+      // shrink, fix rotation, drop EXIF/GPS: smaller still on the SIM link (data-saver)
+      final prepared = prepareImage(raw, maxSide: app.dataSaver ? 800 : 1280);
+      setState(() {
+        _pictures.add(prepared);
+        _pictureError = null;
+      });
+    } on ImagePrepError catch (e) {
+      setState(() => _pictureError = app.s.t(e.messageKey));
     }
   }
 
@@ -436,6 +459,75 @@ class _HomeTabState extends State<HomeTab> {
             label: Text(s.t('voice_offline_help')),
           ),
           const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                key: const Key('attach_gallery'),
+                onPressed: _pictures.length >= 3 || _running ? null : () => _attach(false),
+                icon: const Icon(Icons.photo_library_outlined, size: 18),
+                label: Text(s.t('attach_gallery')),
+              ),
+              OutlinedButton.icon(
+                key: const Key('attach_camera'),
+                onPressed: _pictures.length >= 3 || _running ? null : () => _attach(true),
+                icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                label: Text(s.t('attach_camera')),
+              ),
+              Text(
+                s.tf('attach_count', {'n': _pictures.length}),
+                key: const Key('attach_count'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          if (_pictures.isNotEmpty)
+            SizedBox(
+              height: 92,
+              child: ListView(
+                key: const Key('picture_previews'),
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (var i = 0; i < _pictures.length; i++)
+                    Stack(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Image.memory(
+                            _pictures[i].bytes,
+                            key: Key('picture_$i'),
+                            width: 84,
+                            height: 84,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const SizedBox(width: 84, height: 84),
+                          ),
+                        ),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: InkWell(
+                            key: Key('picture_remove_$i'),
+                            onTap: _running ? null : () => setState(() => _pictures.removeAt(i)),
+                            child: const CircleAvatar(
+                              radius: 11,
+                              child: Icon(Icons.close, size: 14),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          if (_pictureError != null)
+            Text(
+              _pictureError!,
+              key: const Key('picture_error'),
+              style: TextStyle(color: scheme.error),
+            ),
+          Text(s.t('attach_note'), style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 8),
           FilledButton.icon(
             key: const Key('send_button'),
             onPressed: _running ? null : _send,
@@ -496,6 +588,13 @@ class _HomeTabState extends State<HomeTab> {
               ),
             ],
           ),
+          if (app.current != null)
+            ExpansionTile(
+              key: const Key('tools_expansion'),
+              tilePadding: EdgeInsets.zero,
+              title: Text(s.t('tools_title')),
+              children: [ToolsCard(computer: app.current!, api: widget.api)],
+            ),
         ],
       ),
     );

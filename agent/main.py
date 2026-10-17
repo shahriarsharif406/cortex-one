@@ -33,7 +33,8 @@ def cmd_serve(settings: Settings, _args) -> int:
         from .power import PowerWatcher
 
         PowerWatcher(engine, notifier=Notifier.from_settings(settings)).start()
-    engine.watch.notifier = Notifier.from_settings(settings)
+    engine.notifier = Notifier.from_settings(settings)
+    engine.watch.notifier = engine.notifier
     engine.watch.start()
     if settings.net_watch:
         engine.net.notifier = Notifier.from_settings(settings)

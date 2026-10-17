@@ -79,6 +79,11 @@
         <intent>
             <action android:name="android.speech.RecognitionService"/>
         </intent>
+        <!-- url_launcher: open the RustDesk app (its own rustdesk:// link) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="rustdesk"/>
+        </intent>
         <!-- url_launcher: open the SMS app with a prefilled message -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>

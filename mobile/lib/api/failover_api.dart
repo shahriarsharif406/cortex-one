@@ -159,8 +159,8 @@ class FailoverApi implements CortexApi {
     Map<String, String> params = const {},
   ]) => _write((a) => a.confirmAction(name, confirmToken, params));
   @override
-  Future<String> startTask(String instruction) =>
-      _write((a) => a.startTask(instruction));
+  Future<String> startTask(String instruction, {List<TaskImage> images = const []}) =>
+      _write((a) => a.startTask(instruction, images: images));
   @override
   Future<ActionOutcome> confirm(String confirmToken) =>
       _write((a) => a.confirm(confirmToken));

@@ -8,6 +8,7 @@ import '../api/api_client.dart';
 import '../api/failover_api.dart';
 import '../api/wake_gateway_client.dart';
 import '../wake/gateway_platform.dart';
+import '../images/image_source.dart';
 import '../l10n/strings.dart';
 import '../storage/stores.dart';
 import '../voice/voice_input.dart';
@@ -37,13 +38,15 @@ class AppState extends ChangeNotifier {
     LinkMonitor? links,
     WakeGatewayClient? gateway,
     GatewayPlatform? gatewayPlatform,
+    PictureSource? pictures,
     this.attemptTimeout = const Duration(seconds: 5),
     this.monitorEverySeconds = 20,
   }) : launchUri = launchUri ?? _defaultLaunch,
        biometrics = biometrics ?? LocalAuthGate(),
        links = links ?? NoLinkMonitor(),
        gateway = gateway ?? HttpWakeGatewayClient(),
-       gatewayPlatform = gatewayPlatform ?? MethodChannelGatewayPlatform();
+       gatewayPlatform = gatewayPlatform ?? MethodChannelGatewayPlatform(),
+       pictures = pictures ?? DevicePictureSource();
 
   static const _kComputers = 'computers';
   // Older single-computer builds stored these two. They are migrated, then deleted.
@@ -59,6 +62,7 @@ class AppState extends ChangeNotifier {
   final LinkMonitor links;
   final WakeGatewayClient gateway;
   final GatewayPlatform gatewayPlatform;
+  final PictureSource pictures;
   final Duration attemptTimeout;
   final int monitorEverySeconds;
 

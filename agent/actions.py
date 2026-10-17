@@ -60,13 +60,56 @@ class ProcessManager:
             with self._lock:
                 self._procs.discard(proc)
 
+    def spawn(self, cmd: list[str], cwd: str, popen: Any = None) -> subprocess.Popen:
+        """Starts a long-running program (shell=False, own console window, no input) and tracks it
+        so emergency_stop can end it. Only ``sessions.SessionManager`` calls this, with a command
+        taken from the owner's config, never from the phone."""
+        launcher = popen or subprocess.Popen
+        flags = 0x00000010 if platform.system() == "Windows" else 0     # CREATE_NEW_CONSOLE
+        proc = launcher(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL, creationflags=flags) if flags else \
+            launcher(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL)
+        with self._lock:
+            self._procs.add(proc)
+        threading.Thread(target=self._forget_when_done, args=(proc,), daemon=True).start()
+        return proc
+
+    def _forget_when_done(self, proc) -> None:
+        try:
+            proc.wait()
+        except Exception:
+            pass
+        with self._lock:
+            self._procs.discard(proc)
+
+    @staticmethod
+    def kill_tree(proc) -> None:
+        """Ends a process this agent started and everything it started in turn."""
+        victims = []
+        try:
+            import psutil
+
+            victims = psutil.Process(proc.pid).children(recursive=True)
+        except Exception:
+            pass
+        for v in victims:
+            try:
+                v.kill()
+            except Exception:
+                pass
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
     def terminate_all(self) -> int:
         with self._lock:
             procs = list(self._procs)
         for p in procs:
             try:
-                p.kill()
-            except OSError:
+                self.kill_tree(p)
+            except Exception:
                 pass
         return len(procs)
 
@@ -91,6 +134,22 @@ class Context:
     wake_probe: Callable[[], dict[str, Any]] | None = None
     wol_target_limiter: Any = None
     wol_global_limiter: Any = None
+    # Coding sessions: tests inject a fake Popen; the engine sets the exit hook (alert + push).
+    popen: Any = None
+    session_exit_hook: Any = None
+    watch_snapshot: Any = None
+    process_names: Any = None        # tests: callable returning a list of process names
+    _sessions: Any = None
+
+    @property
+    def sessions(self):
+        if self._sessions is None:
+            from .sessions import SessionManager
+
+            self._sessions = SessionManager(
+                self.processes, popen=self.popen,
+                on_exit=lambda n, c: self.session_exit_hook(n, c) if self.session_exit_hook else None)
+        return self._sessions
 
     def run(self, cmd: list[str], timeout: float = 60) -> tuple[int, str]:
         fn = self.runner or self.processes.run
@@ -672,6 +731,86 @@ def power_capabilities(ctx: Context, params: dict[str, Any]) -> ActionResult:
     return ActionResult(True, data["summary"], data)
 
 
+# ------------------------------------------------- coding sessions, remote desktop
+def _project(ctx: Context, params: dict[str, Any]):
+    from .sessions import parse_projects
+
+    projects, _ = parse_projects(ctx.settings)
+    name = params["name"].strip().lower()
+    project = projects.get(name)
+    if project is None:
+        raise ActionError(f"'{_printable(params['name'], 40)}' is not a configured coding project. "
+                          f"Known: {', '.join(sorted(projects)) or 'none'}.")
+    return project
+
+
+def coding_session_start(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    ctx.require_windows()
+    project = _project(ctx, params)
+    if ctx.stop_event.is_set():
+        raise ActionError("Emergency stop is active. Restart the agent to continue.")
+    pid = ctx.sessions.start(project)
+    return ActionResult(True, f"Started the coding session '{project.name}'.", {"project": project.name, "pid": pid})
+
+
+def coding_session_stop(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    project = _project(ctx, params)
+    if not ctx.sessions.stop(project.name):
+        raise ActionError(f"There is no running session '{project.name}' that this agent started.")
+    return ActionResult(True, f"Stopped the coding session '{project.name}'.", {"project": project.name})
+
+
+def coding_session_list(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    """Every configured project with its state, plus the watch rules' states (names only)."""
+    from .sessions import parse_projects
+
+    projects, problems = parse_projects(ctx.settings)
+    rows = [{"project": n, **ctx.sessions.status(n)} for n in sorted(projects)]
+    watch: list[dict[str, Any]] = []
+    if ctx.watch_snapshot is not None:
+        try:
+            snap = ctx.watch_snapshot()
+            watch = [{"rule": r["name"], "state": r["state"]} for r in snap.get("rules", [])][:20]
+        except Exception:
+            watch = []
+    return ActionResult(True, f"{len(rows)} coding project(s).",
+                        {"projects": rows, "watch": watch, "config_problems": len(problems)})
+
+
+def _running_names(ctx: Context) -> list[tuple[str, str | None]]:
+    """(base name lower-case, exe path or None) of running processes. Names only."""
+    if ctx.process_names is not None:
+        return [(str(n).lower().removesuffix(".exe"), None) for n in ctx.process_names()]
+    psutil = _psutil()
+    found = []
+    for proc in psutil.process_iter(["name", "exe"]):
+        info = proc.info
+        base = str(info.get("name") or "").lower().removesuffix(".exe")
+        if base:
+            found.append((base, info.get("exe")))
+    return found
+
+
+def remote_desktop_status(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    wanted = str(ctx.settings.remote_desktop_process or "").strip().lower().removesuffix(".exe")
+    if not wanted or not re.fullmatch(r"[a-z0-9_.-]{1,40}", wanted):
+        raise ActionError("remote_desktop_process is not set to a plain program name.")
+    hits = [exe for base, exe in _running_names(ctx) if base == wanted]
+    version = None
+    if hits and hits[0]:
+        from .sessions import file_version
+
+        version = file_version(hits[0]) if ctx.system == "Windows" else None
+    msg = (f"{wanted} is running" + (f" (version {version})" if version else "")
+           if hits else f"{wanted} is not running")
+    return ActionResult(True, msg + ".", {"running": bool(hits), "version": version})
+
+
+def remote_desktop_start(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    key = str(ctx.settings.remote_desktop_app or "").strip().lower()
+    return open_app(ctx, {"name": key})
+
+
 # --------------------------------------------------------------- registry
 @dataclass(frozen=True)
 class ActionSpec:
@@ -727,6 +866,18 @@ REGISTRY: dict[str, ActionSpec] = {s.name: s for s in [
     ActionSpec("power_capabilities", "What can wake this computer (Wi-Fi/Ethernet, from "
                "Sleep) and which computers it can wake; honest, read-only", "low",
                power_capabilities),
+    ActionSpec("coding_session_start", "Start a coding session defined by the owner (a "
+               "program in a project folder); the owner confirms first", "high",
+               coding_session_start, ("name",)),
+    ActionSpec("coding_session_stop", "Stop a coding session that this agent started; "
+               "the owner confirms first", "high", coding_session_stop, ("name",)),
+    ActionSpec("coding_session_list", "Configured coding projects with state (running / "
+               "exited / not started) and the watch rules' states (read-only)", "low",
+               coding_session_list),
+    ActionSpec("remote_desktop_status", "Is the remote desktop helper (RustDesk) running, "
+               "and its version if cheaply known (read-only)", "low", remote_desktop_status),
+    ActionSpec("remote_desktop_start", "Start the remote desktop helper (RustDesk) from the "
+               "approved apps; the owner confirms first", "high", remote_desktop_start),
     ActionSpec("agent_watch", "Which approved watched programs are running, with "
                "start time and memory (read-only)", "low", agent_watch),
 ]}

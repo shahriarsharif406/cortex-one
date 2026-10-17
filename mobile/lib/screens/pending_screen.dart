@@ -145,7 +145,7 @@ class _PendingCardState extends State<PendingCard> {
       'sleep' => s.t('act_sleep'),
       'hibernate' => s.t('act_hibernate'),
       'run_script' => s.t('act_run_script'),
-      _ => s.t('act_other'),
+      _ => s.has('act_${item.action}') ? s.t('act_${item.action}') : s.t('act_other'),
     };
     final confirmLabel = switch (item.action) {
       'shutdown' => s.t('confirm_shutdown'),
@@ -153,7 +153,9 @@ class _PendingCardState extends State<PendingCard> {
       'sleep' => s.t('confirm_sleep'),
       'hibernate' => s.t('confirm_hibernate'),
       'run_script' => s.t('confirm_run_script'),
-      _ => s.t('confirm_default'),
+      _ => s.has('confirm_${item.action}')
+          ? s.t('confirm_${item.action}')
+          : s.t('confirm_default'),
     };
     final scriptName = item.params['name'];
     return Card(
@@ -172,7 +174,7 @@ class _PendingCardState extends State<PendingCard> {
             ),
             if (item.summary.isNotEmpty)
               Text(item.summary, key: const Key('pending_summary')),
-            if (item.action == 'run_script') ...[
+            if (item.action == 'run_script' || item.action == 'coding_session_start') ...[
               const SizedBox(height: 8),
               if (scriptName != null)
                 Text('${s.t('script_label')}: $scriptName'),

@@ -9,6 +9,7 @@ import 'package:cortex_one/state/computer.dart';
 import 'package:cortex_one/wake/gateway_platform.dart';
 import 'package:cortex_one/state/device_services.dart';
 import 'package:cortex_one/api/models.dart';
+import 'package:cortex_one/images/image_source.dart';
 import 'package:cortex_one/app.dart';
 import 'package:cortex_one/state/app_state.dart';
 import 'package:cortex_one/storage/stores.dart';
@@ -64,6 +65,9 @@ class FakeApi implements CortexApi {
   final List<Map<String, String>> confirmedParams = [];
   Object? requestError;
   final List<bool> screenshotLow = [];
+  final List<List<TaskImage>> sentImages = [];
+  Object? startError;
+  List<Map<String, dynamic>> codingRows = [];
 
   @override
   Future<String> pair(String code, String deviceName) async {
@@ -79,6 +83,12 @@ class FakeApi implements CortexApi {
   ]) async {
     calls.add('action:$name');
     actionParams.add(params);
+    if (name == 'coding_session_list') {
+      return ActionOutcome(ok: true, message: 'n', data: {'projects': codingRows});
+    }
+    if (name == 'remote_desktop_status') {
+      return const ActionOutcome(ok: true, message: 'rustdesk is running (version 1.3.0).');
+    }
     if (name == 'wake_computer') {
       return ActionOutcome(ok: true, message: 'Wake packet sent', data: params);
     }
@@ -118,8 +128,10 @@ class FakeApi implements CortexApi {
   }
 
   @override
-  Future<String> startTask(String instruction) async {
+  Future<String> startTask(String instruction, {List<TaskImage> images = const []}) async {
     calls.add('start:$instruction');
+    sentImages.add(images);
+    if (startError != null) throw startError!;
     return 'job1';
   }
 
@@ -260,6 +272,25 @@ class FakeVoice implements VoiceInput {
   bool get isListening => listening;
 }
 
+class FakePictures implements PictureSource {
+  FakePictures({this.gallery, this.camera});
+  Uint8List? gallery;
+  Uint8List? camera;
+  final List<String> asked = [];
+
+  @override
+  Future<Uint8List?> pickGallery() async {
+    asked.add('gallery');
+    return gallery;
+  }
+
+  @override
+  Future<Uint8List?> pickCamera() async {
+    asked.add('camera');
+    return camera;
+  }
+}
+
 class FakeBiometric implements BiometricGate {
   bool allow = true;
   final List<String> reasons = [];
@@ -318,6 +349,7 @@ class Harness {
     FakeLink? link,
     FakeGateway? gateway,
     FakeGatewayPlatform? gatewayPlatform,
+    FakePictures? pictures,
     List<Computer>? computers,
     Map<String, FakeApi>? apis,
   }) : api = api ?? FakeApi(),
@@ -327,6 +359,7 @@ class Harness {
       link = link ?? FakeLink(),
       gateway = gateway ?? FakeGateway(),
       gatewayPlatform = gatewayPlatform ?? FakeGatewayPlatform(),
+      pictures = pictures ?? FakePictures(),
       secrets = MemorySecretStore(),
       prefs = MemoryPrefsStore(),
       launched = [] {
@@ -348,6 +381,7 @@ class Harness {
       links: this.link,
       gateway: this.gateway,
       gatewayPlatform: this.gatewayPlatform,
+      pictures: this.pictures,
       monitorEverySeconds: 0, // no periodic timer in widget tests
       launchUri: (uri) async {
         launched.add(uri);
@@ -365,6 +399,7 @@ class Harness {
   final FakeLink link;
   final FakeGateway gateway;
   final FakeGatewayPlatform gatewayPlatform;
+  final FakePictures pictures;
   final MemorySecretStore secrets;
   final MemoryPrefsStore prefs;
   final List<Uri> launched;

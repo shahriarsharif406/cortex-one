@@ -106,6 +106,13 @@ class Settings:
     # Computers THIS computer may wake with Wake-on-LAN: {name: {"mac": "AA:BB:CC:DD:EE:FF",
     # "broadcast": "192.168.1.255"}}. Empty = wake_computer is off.
     wake_targets: dict = field(default_factory=dict)
+    # Coding sessions the OWNER defines: {name: {"path": folder inside allowed_roots,
+    # "argv": [program, arg, ...]}}. The phone/AI only ever name a project (agent/sessions.py).
+    coding_projects: dict = field(default_factory=dict)
+    # Remote desktop helper (RustDesk): the process NAME to look for and the key in allowed_apps
+    # used to start it. Its password and config files are never read.
+    remote_desktop_process: str = "rustdesk"
+    remote_desktop_app: str = "rustdesk"
     # Name of the SIM / USB-tether network adapter (doctor checks that it exists).
     backup_adapter_name: str = ""
     # Network watchdog (report only). Empty targets = the built-in two. "host:port".

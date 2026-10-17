@@ -50,7 +50,7 @@ abstract class CortexApi {
     Map<String, String> params = const {},
   ]);
   Future<ActionOutcome> emergencyStop();
-  Future<String> startTask(String instruction);
+  Future<String> startTask(String instruction, {List<TaskImage> images = const []});
   Future<TaskStatus> getTask(String id);
   Future<List<PendingItem>> pending();
   Future<ActionOutcome> confirm(String confirmToken);
@@ -216,10 +216,12 @@ class HttpCortexApi implements CortexApi {
         ? decoded['detail'] as String
         : '';
     final kind = switch (response.statusCode) {
+      400 => ApiErrorKind.invalid,
       401 => ApiErrorKind.unauthorized,
       403 => ApiErrorKind.forbidden,
       404 => ApiErrorKind.notFound,
       422 => ApiErrorKind.invalid,
+      413 || 411 => ApiErrorKind.invalid,
       429 => ApiErrorKind.rateLimited,
       503 => ApiErrorKind.unavailable,
       _ => ApiErrorKind.server,
@@ -290,12 +292,23 @@ class HttpCortexApi implements CortexApi {
       ActionOutcome.fromJson(_obj(await _send('POST', '/emergency-stop')));
 
   @override
-  Future<String> startTask(String instruction) async {
+  Future<String> startTask(
+    String instruction, {
+    List<TaskImage> images = const [],
+  }) async {
     final j = _obj(
       await _send(
         'POST',
         '/ai/tasks',
-        body: {'instruction': instruction, 'wait': false},
+        body: {
+          'instruction': instruction,
+          'wait': false,
+          if (images.isNotEmpty)
+            'images': [
+              for (final i in images)
+                {'media_type': i.mediaType, 'data': base64Encode(i.bytes)},
+            ],
+        },
       ),
     );
     final id = j['id'];

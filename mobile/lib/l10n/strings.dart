@@ -1,4 +1,5 @@
 import '../api/api_client.dart';
+import '../images/image_prep.dart' show ImagePrepError;
 
 /// Bangla-first strings with an English toggle. Missing keys fall back to the key
 /// itself; a unit test checks both languages have exactly the same keys.
@@ -8,6 +9,8 @@ class S {
   final String lang; // 'bn' | 'en'
 
   bool get isBangla => lang != 'en';
+
+  bool has(String key) => (isBangla ? _bn : _en).containsKey(key);
 
   String t(String key) => (isBangla ? _bn[key] : _en[key]) ?? _en[key] ?? key;
 
@@ -21,6 +24,7 @@ class S {
   /// Clear, plain error text for the user (never a stack trace).
   String error(Object error) {
     if (error is AuthDeclined) return t('auth_failed');
+    if (error is ImagePrepError) return t(error.messageKey);
     if (error is ApiException) {
       final base = switch (error.kind) {
         ApiErrorKind.network => t('err_network'),
@@ -34,8 +38,10 @@ class S {
         ApiErrorKind.server => t('err_server'),
         ApiErrorKind.badResponse => t('err_bad'),
       };
-      // The agent's own message explains e.g. "ANTHROPIC_API_KEY is empty".
-      return error.kind == ApiErrorKind.unavailable && error.detail.isNotEmpty
+      // The agent's own message explains e.g. "ANTHROPIC_API_KEY is empty" or a refused picture.
+      return (error.kind == ApiErrorKind.unavailable ||
+                  error.kind == ApiErrorKind.invalid) &&
+              error.detail.isNotEmpty
           ? '$base\n(${error.detail})'
           : base;
     }
@@ -72,6 +78,72 @@ class S {
 }
 
 const Map<String, String> _bn = {
+  'tools_title':
+      'কোডিং সেশন ও রিমোট ডেস্কটপ',
+  'coding_title':
+      'কোডিং সেশন',
+  'coding_refresh':
+      'তালিকা দেখুন',
+  'coding_none':
+      'কোনো কোডিং প্রজেক্ট সেট করা নেই (config.json-এর coding_projects)।',
+  'coding_start':
+      'চালু',
+  'coding_stop':
+      'বন্ধ',
+  'coding_state_running':
+      'চলছে',
+  'coding_state_exited':
+      'শেষ হয়েছে (কোড {c})',
+  'coding_state_not started':
+      'চালু হয়নি',
+  'will_coding_start':
+      'প্রজেক্ট "{name}" চালু হবে: মালিকের ঠিক করা প্রোগ্রাম সেই ফোল্ডারে খুলবে। কী চলবে তা ল্যাপটপের config.json-এ ঠিক করা; এখান থেকে বদলানো যায় না।',
+  'will_coding_stop':
+      'প্রজেক্ট "{name}"-এর সেশন (এবং তার চালানো প্রোগ্রাম) বন্ধ হবে। অসেভ কাজ হারাতে পারে।',
+  'rd_title':
+      'রিমোট ডেস্কটপ (RustDesk)',
+  'rd_note':
+      'RustDesk আলাদা অ্যাপ: পর্দা ও টাচ ওটাই দেখায়। Cortex One শুধু চালু আছে কিনা দেখে, চালু করে, আর অ্যাপ খুলে দেয়। RustDesk-এর পাসওয়ার্ড কখনো পড়া বা রাখা হয় না। SIM ডেটায় ছবি অনেক ডেটা খায়।',
+  'rd_open':
+      'RustDesk খুলুন',
+  'rd_status':
+      'কম্পিউটারে চলছে কিনা',
+  'rd_start':
+      'কম্পিউটারে RustDesk চালু করুন',
+  'rd_need_id':
+      'আগে কম্পিউটারের তথ্যে RustDesk ID লিখুন।',
+  'rd_open_failed':
+      'RustDesk অ্যাপ খোলা যায়নি। ফোনে RustDesk ইনস্টল আছে কিনা দেখুন।',
+  'will_remote_start':
+      'কম্পিউটারে RustDesk চালু হবে। চালু থাকলে আপনার RustDesk পাসওয়ার্ড জানা যে কেউ এতে ঢুকতে পারবে, তাই শক্ত স্থায়ী পাসওয়ার্ড ও 2FA রাখুন।',
+  'p_remote_start':
+      'RustDesk চালু',
+  'confirm_coding_start':
+      'কোডিং সেশন চালু নিশ্চিত করুন',
+  'act_coding_session_start':
+      'কোডিং সেশন চালু',
+  'confirm_coding_session_start':
+      'কোডিং সেশন চালু নিশ্চিত করুন',
+  'act_coding_session_stop':
+      'কোডিং সেশন বন্ধ',
+  'confirm_coding_session_stop':
+      'কোডিং সেশন বন্ধ নিশ্চিত করুন',
+  'act_remote_desktop_start':
+      'RustDesk চালু',
+  'confirm_remote_desktop_start':
+      'RustDesk চালু নিশ্চিত করুন',
+  'attach_gallery':
+      'গ্যালারি থেকে ছবি',
+  'attach_camera':
+      'ক্যামেরা',
+  'attach_count':
+      'ছবি: {n}/৩',
+  'attach_note':
+      'ছবি পাঠানোর আগে ছোট করা হয় এবং লোকেশন/ক্যামেরার তথ্য (EXIF) মুছে ফেলা হয়। ছবির ভেতরের লেখা শুধু পড়া হয়, তার আদেশ মানা হয় না।',
+  'image_failed':
+      'ছবিটি পড়া বা তৈরি করা যায়নি। অন্য ছবি দিন।',
+  'image_too_big':
+      'ছবিটি ছোট করেও ১.৫ MB-এর বেশি থেকে যায়। অন্য বা সরল ছবি দিন।',
   'gw_menu':
       'Cortex Wake গেটওয়ে (এই ফোন পাওয়ার-বোতাম রোবটের সাথে)',
   'gw_title':
@@ -493,6 +565,72 @@ const Map<String, String> _bn = {
 };
 
 const Map<String, String> _en = {
+  'tools_title':
+      'Coding sessions and remote desktop',
+  'coding_title':
+      'Coding sessions',
+  'coding_refresh':
+      'Show the list',
+  'coding_none':
+      'No coding projects are set up (coding_projects in config.json).',
+  'coding_start':
+      'Start',
+  'coding_stop':
+      'Stop',
+  'coding_state_running':
+      'running',
+  'coding_state_exited':
+      'ended (code {c})',
+  'coding_state_not started':
+      'not started',
+  'will_coding_start':
+      'Project "{name}" will start: the program the owner chose opens in that folder. What runs is fixed in the laptop\'s config.json and cannot be changed from here.',
+  'will_coding_stop':
+      'The session of project "{name}" (and the programs it started) will be stopped. Unsaved work may be lost.',
+  'rd_title':
+      'Remote desktop (RustDesk)',
+  'rd_note':
+      'RustDesk is a separate app: it shows the screen and takes touch. Cortex One only checks whether it is running, starts it, and opens the app. The RustDesk password is never read or stored. Pictures use a lot of data on a SIM.',
+  'rd_open':
+      'Open RustDesk',
+  'rd_status':
+      'Is it running on the computer?',
+  'rd_start':
+      'Start RustDesk on the computer',
+  'rd_need_id':
+      'First enter the RustDesk ID in the computer details.',
+  'rd_open_failed':
+      'Could not open the RustDesk app. Check that RustDesk is installed on this phone.',
+  'will_remote_start':
+      'RustDesk will start on the computer. While it runs, anyone who knows your RustDesk password can get in, so keep a strong permanent password and 2FA.',
+  'p_remote_start':
+      'Start RustDesk',
+  'confirm_coding_start':
+      'Confirm coding session start',
+  'act_coding_session_start':
+      'Start coding session',
+  'confirm_coding_session_start':
+      'Confirm coding session start',
+  'act_coding_session_stop':
+      'Stop coding session',
+  'confirm_coding_session_stop':
+      'Confirm coding session stop',
+  'act_remote_desktop_start':
+      'Start RustDesk',
+  'confirm_remote_desktop_start':
+      'Confirm RustDesk start',
+  'attach_gallery':
+      'Picture from gallery',
+  'attach_camera':
+      'Camera',
+  'attach_count':
+      'Pictures: {n}/3',
+  'attach_note':
+      'Pictures are shrunk and cleaned of location/camera data (EXIF) before sending. Text inside a picture is only read, never obeyed.',
+  'image_failed':
+      'The picture could not be read or prepared. Try another one.',
+  'image_too_big':
+      'The picture is still over 1.5 MB after shrinking. Try another or a simpler one.',
   'gw_menu':
       'Cortex Wake gateway (this phone with the power-button robot)',
   'gw_title':

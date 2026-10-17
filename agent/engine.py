@@ -32,6 +32,9 @@ class Engine:
         self.alerts = AlertStore(self.db)
         self.watch = RuleWatcher(self)       # rule watcher; serve starts its thread
         self.net = NetWatcher(self)          # network watchdog (report only)
+        self.ctx.watch_snapshot = self.watch.snapshot
+        self.ctx.session_exit_hook = self._session_exited
+        self.notifier = None                 # serve sets a Notifier (optional push)
         self.started_at = time.time()
         self.battery_provider = psutil_battery
 
@@ -56,6 +59,19 @@ class Engine:
     # Actions after which the computer is expected to go away. The agent remembers the
     # last one so the phone can tell "sleeping" from "offline" when it comes back.
     POWER_ACTIONS = frozenset({"sleep", "hibernate", "shutdown", "restart"})
+
+    def _session_exited(self, name: str, code: int | None) -> None:
+        """A coding session this agent started has ended: a fixed sentence goes to the alerts
+        table and the optional push (never program output)."""
+        message = f"Coding session '{name}' ended (exit code {code})"
+        self.alerts.add("watch_session_exit", None, None, message)
+        self.audit.log("watcher", "sessions", "coding_session_exit", {"project": name}, "ok",
+                       f"exit code {code}")
+        if self.notifier is not None:
+            try:
+                self.notifier.notify(message, None, time.strftime("%H:%M"))
+            except Exception:
+                pass
 
     def computer_id(self) -> str:
         """A random id made once per installation (not derived from hardware)."""
