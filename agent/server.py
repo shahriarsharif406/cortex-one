@@ -19,8 +19,8 @@ from .ai import (MAX_INSTRUCTION_LEN, AIUnavailable, AITask, AITaskResult,
 from .config import Settings
 from .images import MAX_B64_CHARS, MAX_IMAGES, ImageError, validate_images
 from .engine import Engine
-from .security import (Device, LockoutTracker, PairingLocked, RateLimiter,
-                       TooManyPending, verify_secret)
+from .security import (VIEWER_ACTIONS, Device, LockoutTracker, PairingLocked,
+                       RateLimiter, TooManyPending, verify_secret)
 from .sms import SmsHandler
 
 
@@ -120,7 +120,8 @@ def create_app(settings: Settings | None = None,
             {"loc": list(e.get("loc", ())), "msg": str(e.get("msg", "invalid"))}
             for e in exc.errors()]})
 
-    def current_device(authorization: str | None = Header(default=None)) -> Device:
+    def current_device(request: Request,
+                       authorization: str | None = Header(default=None)) -> Device:
         token = None
         if authorization and authorization.lower().startswith("bearer "):
             token = authorization[7:].strip()
@@ -129,6 +130,19 @@ def create_app(settings: Settings | None = None,
             raise HTTPException(401, "Not authorised.")
         if not engine.limiter.allow(f"device:{device.id}"):
             raise HTTPException(429, "Too many requests. Slow down.")
+        server = request.scope.get("server")
+        if server:
+            from .netbind import classify_address
+
+            engine.pairing.touch_link(device.id, classify_address(server[0]))
+        return device
+
+    def owner_device(request: Request, device: Device = Depends(current_device)) -> Device:
+        """Endpoints that a viewer phone must never reach."""
+        if device.role != "owner":
+            engine.audit.log(f"device:{device.name}", "http", f"{request.method} {request.url.path}",
+                             {}, "rejected", "viewer role")
+            raise HTTPException(403, "This phone has the viewer role: it can only look.")
         return device
 
     jobs: dict[str, Job] = {}
@@ -187,7 +201,8 @@ def create_app(settings: Settings | None = None,
     def pair(body: PairRequest, request: Request) -> dict[str, str]:
         client = request.client.host if request.client else "unknown"
         try:
-            token = engine.pairing.pair(body.code, body.device_name, client)
+            paired = engine.pairing.pair_with_role(body.code, body.device_name, client)
+            token = paired[0] if paired else None
         except PairingLocked:
             engine.audit.log(f"client:{client}", "http", "pair", {}, "rejected",
                              "pairing locked")
@@ -197,14 +212,20 @@ def create_app(settings: Settings | None = None,
                              "bad or expired code")
             raise HTTPException(403, "Invalid or expired pairing code.")
         engine.audit.log(f"client:{client}", "http", "pair", {}, "ok",
-                         f"paired '{body.device_name}'")
-        return {"token": token}
+                         f"paired '{body.device_name}' as {paired[1]}")
+        return {"token": token, "role": paired[1]}
+
+    @app.get("/me")
+    def me(device: Device = Depends(current_device)) -> dict[str, str]:
+        """Who this phone is: its name and role (the app hides what a viewer cannot use)."""
+        return {"name": device.name, "role": device.role}
 
     @app.get("/actions")
     def list_actions(device: Device = Depends(current_device)) -> list[dict]:
         return [{"name": s.name, "description": s.description, "risk": s.risk,
                  "params": list(s.params), "optional": list(s.optional)}
-                for s in REGISTRY.values()]
+                for s in REGISTRY.values()
+                if device.role == "owner" or s.name in VIEWER_ACTIONS]
 
     @app.post("/actions/{name}")
     def run_action(name: str, body: ActionRequest,
@@ -213,6 +234,9 @@ def create_app(settings: Settings | None = None,
         if spec is None:
             raise HTTPException(404, "Unknown action.")
         actor = f"device:{device.name}"
+        if device.role != "owner" and name not in VIEWER_ACTIONS:
+            engine.audit.log(actor, "http", name, {}, "rejected", "viewer role")
+            raise HTTPException(403, "This phone has the viewer role: it can only look.")
         if spec.risk == "high":
             try:   # validate first: only clean, small params may be stored or audited
                 clean = validate_params(spec, body.params)
@@ -242,21 +266,21 @@ def create_app(settings: Settings | None = None,
                 engine.audit.log(actor, "http", name, body.params, "rejected",
                                  "bad or expired confirmation")
                 raise HTTPException(403, "Confirmation is invalid or expired.")
-        result = engine.run(name, body.params, actor=actor, via="http")
+        result = engine.run(name, body.params, actor=actor, via="http", role=device.role)
         # keys starting with "_" carry pictures meant for the AI only; never send them to a client
         data = {k: v for k, v in result.data.items() if not str(k).startswith("_")}
         return {"status": "ok" if result.ok else "failed",
                 "message": result.message, "data": data}
 
     @app.post("/emergency-stop")
-    def emergency_stop(device: Device = Depends(current_device)) -> dict[str, Any]:
+    def emergency_stop(device: Device = Depends(owner_device)) -> dict[str, Any]:
         result = engine.run("emergency_stop", {}, actor=f"device:{device.name}",
                             via="http")
         return {"status": "ok", "message": result.message}
 
     @app.post("/ai/tasks")
     def ai_task(body: AITaskRequest, response: Response,
-                device: Device = Depends(current_device)) -> dict[str, Any]:
+                device: Device = Depends(owner_device)) -> dict[str, Any]:
         if not ai_limiter.allow(f"ai:{device.id}"):
             raise HTTPException(429, "Too many AI requests. Wait a minute.")
         try:
@@ -294,7 +318,7 @@ def create_app(settings: Settings | None = None,
         return {"id": job.id, "status": "running"}
 
     @app.get("/ai/tasks/{job_id}")
-    def ai_task_status(job_id: str, device: Device = Depends(current_device)) -> dict[str, Any]:
+    def ai_task_status(job_id: str, device: Device = Depends(owner_device)) -> dict[str, Any]:
         with jobs_lock:
             job = jobs.get(job_id)
         if job is None or job.device_id != device.id:
@@ -308,18 +332,18 @@ def create_app(settings: Settings | None = None,
         return out
 
     @app.get("/capabilities")
-    def get_capabilities(device: Device = Depends(current_device)) -> dict[str, list[str]]:
+    def get_capabilities(device: Device = Depends(owner_device)) -> dict[str, list[str]]:
         """What the owner allowed (names/paths only; never hashes, tokens or commands)."""
         return capabilities(settings)
 
     @app.get("/ai/pending")
-    def ai_pending(device: Device = Depends(current_device)) -> list[dict[str, Any]]:
+    def ai_pending(device: Device = Depends(owner_device)) -> list[dict[str, Any]]:
         rows = engine.confirmations.list_pending(device.id, "ai")
         return [{**row, **describe(row["action"], row["params"])} for row in rows]
 
     @app.post("/ai/confirm")
     def ai_confirm(body: ConfirmRequest,
-                   device: Device = Depends(current_device)) -> dict[str, Any]:
+                   device: Device = Depends(owner_device)) -> dict[str, Any]:
         actor = f"device:{device.name}"
         found = engine.confirmations.peek(body.confirm_token, device.id, "ai")
         if found is None:
@@ -338,7 +362,7 @@ def create_app(settings: Settings | None = None,
 
     @app.post("/ai/cancel")
     def ai_cancel(body: ConfirmRequest,
-                  device: Device = Depends(current_device)) -> dict[str, str]:
+                  device: Device = Depends(owner_device)) -> dict[str, str]:
         if not engine.confirmations.discard(body.confirm_token, device.id, "ai"):
             raise HTTPException(404, "No such pending request.")
         engine.audit.log(f"device:{device.name}", "http", "ai_cancel", {}, "ok",
@@ -351,7 +375,7 @@ def create_app(settings: Settings | None = None,
         return ai.history(limit, device.id)
 
     @app.get("/ai/usage")
-    def ai_usage(device: Device = Depends(current_device)) -> dict[str, int]:
+    def ai_usage(device: Device = Depends(owner_device)) -> dict[str, int]:
         return ai.usage_today()
 
     @app.get("/screenshots")
@@ -381,12 +405,12 @@ def create_app(settings: Settings | None = None,
                                  "X-Content-Type-Options": "nosniff"})
 
     @app.get("/gui/session")
-    def gui_session(device: Device = Depends(current_device)) -> dict:
+    def gui_session(device: Device = Depends(owner_device)) -> dict:
         """State of the supervised GUI session (time left, actions used, last actions). Read-only."""
         return engine.ctx.gui.snapshot()
 
     @app.get("/gui/shot/{name}")
-    def gui_shot(name: str, device: Device = Depends(current_device)) -> Response:
+    def gui_shot(name: str, device: Device = Depends(owner_device)) -> Response:
         """A small picture the GUI session saved (strict file names only)."""
         found = engine.ctx.gui.shot_bytes(name)
         if found is None:
@@ -406,7 +430,7 @@ def create_app(settings: Settings | None = None,
 
     @app.get("/audit")
     def audit(limit: int = 50,
-              device: Device = Depends(current_device)) -> list[dict]:
+              device: Device = Depends(owner_device)) -> list[dict]:
         return engine.audit.recent(limit)
 
     @app.post("/sms/inbound")

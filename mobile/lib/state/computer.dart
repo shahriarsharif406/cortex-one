@@ -31,6 +31,7 @@ class Computer {
     this.wakeVia,
     this.wakeGateway,
     this.rustdeskId,
+    this.role = 'owner',
   });
 
   final String id;
@@ -53,6 +54,11 @@ class Computer {
   /// The RustDesk ID the owner typed in (never the password).
   final String? rustdeskId;
 
+  /// 'owner' or 'viewer' (a viewer phone can only look). Learned from the agent when pairing.
+  final String role;
+
+  bool get isViewer => role == 'viewer';
+
   Computer copyWith({
     String? name,
     List<String>? endpoints,
@@ -61,6 +67,7 @@ class Computer {
     Object? wakeVia = _keep,
     Object? wakeGateway = _keep,
     Object? rustdeskId = _keep,
+    String? role,
   }) => Computer(
     id: id,
     name: name ?? this.name,
@@ -74,6 +81,7 @@ class Computer {
     rustdeskId: identical(rustdeskId, _keep)
         ? this.rustdeskId
         : rustdeskId as String?,
+    role: role ?? this.role,
   );
 
   Map<String, dynamic> toJson() => {
@@ -85,6 +93,7 @@ class Computer {
     if (wakeVia != null) 'wake_via': wakeVia,
     if (wakeGateway != null) 'wake_gateway': wakeGateway!.toJson(),
     if (rustdeskId != null) 'rustdesk_id': rustdeskId,
+    'role': role,
   };
 
   static Computer? fromJson(Object? j) {
@@ -118,6 +127,8 @@ class Computer {
           j['rustdesk_id'] is String && (j['rustdesk_id'] as String).isNotEmpty
           ? j['rustdesk_id'] as String
           : null,
+      // a missing role is an old record (owner); anything unknown is treated as a viewer
+      role: j['role'] == null || j['role'] == 'owner' ? 'owner' : 'viewer',
     );
   }
 

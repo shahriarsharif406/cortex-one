@@ -69,7 +69,7 @@ class SettingsMenu extends StatelessWidget {
               value: 'dark',
               child: Text('${s.t('theme')}: ${s.t('theme_dark')}'),
             ),
-            if (showUnpair)
+            if (showUnpair && !(app.current?.isViewer ?? false))
               PopupMenuItem(value: 'gateway', child: Text(s.t('gw_menu'))),
             if (showUnpair)
               PopupMenuItem(value: 'unpair', child: Text(s.t('unpair'))),

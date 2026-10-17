@@ -67,6 +67,8 @@ class FakeApi implements CortexApi {
   final List<bool> screenshotLow = [];
   final List<List<TaskImage>> sentImages = [];
   Object? startError;
+  String roleAnswer = 'owner';
+  Object? roleError;
   GuiSnapshot guiSnapshot = const GuiSnapshot();
   Object? guiError;
   List<Map<String, dynamic>> codingRows = [];
@@ -200,6 +202,13 @@ class FakeApi implements CortexApi {
 
   @override
   Future<List<ScreenshotInfo>> screenshots() async => const [];
+
+  @override
+  Future<String> role() async {
+    calls.add('role');
+    if (roleError != null) throw roleError!;
+    return roleAnswer;
+  }
 
   @override
   Future<GuiSnapshot> guiSession() async {

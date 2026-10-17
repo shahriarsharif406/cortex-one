@@ -78,6 +78,8 @@ class S {
 }
 
 const Map<String, String> _bn = {
+  'viewer_note':
+      'এই ফোন "দেখার" ভূমিকায় আছে: শুধু অবস্থা, স্ক্রিনশট ও সতর্কবার্তা দেখতে পারবে। কিছু বদলাতে, AI চালাতে বা পাওয়ার কমান্ড দিতে পারবে না।',
   'answered_by':
       'উত্তর দিয়েছে: {m}',
   'answered_local':
@@ -605,6 +607,8 @@ const Map<String, String> _bn = {
 };
 
 const Map<String, String> _en = {
+  'viewer_note':
+      'This phone has the viewer role: it can only look at status, screenshots and alerts. It cannot change anything, use the AI or send power commands.',
   'answered_by':
       'Answered by: {m}',
   'answered_local':

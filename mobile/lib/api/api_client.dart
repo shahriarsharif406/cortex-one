@@ -69,6 +69,10 @@ abstract class CortexApi {
   /// [lowData] asks for the small data-saver JPEG (for the SIM link).
   Future<Uint8List> screenshotBytes(String name, {int? width, bool lowData});
 
+  /// "owner" or "viewer": the role the agent gave this phone (GET /me). An older agent without
+  /// /me is treated as an owner (the agent enforces the role itself either way).
+  Future<String> role();
+
   /// The supervised GUI session (time left, actions used, last actions).
   Future<GuiSnapshot> guiSession();
 
@@ -379,6 +383,17 @@ class HttpCortexApi implements CortexApi {
       for (final e in (j['files'] as List? ?? const []))
         if (e is Map) ScreenshotInfo.fromJson(Map<String, dynamic>.from(e)),
     ];
+  }
+
+  @override
+  Future<String> role() async {
+    try {
+      final j = _obj(await _send('GET', '/me'));
+      return j['role'] == 'owner' ? 'owner' : 'viewer';   // unknown means least rights
+    } on ApiException catch (e) {
+      if (e.kind == ApiErrorKind.notFound) return 'owner';
+      rethrow;
+    }
   }
 
   @override

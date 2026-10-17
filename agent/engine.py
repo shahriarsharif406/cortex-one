@@ -17,7 +17,8 @@ from .netbind import classify_address
 from .netwatch import NetWatcher
 from .power import AlertStore, critical_threshold, psutil_battery
 from .watch import RuleWatcher
-from .security import ConfirmationStore, PairingManager, RateLimiter
+from .security import (VIEWER_ACTIONS, ConfirmationStore, PairingManager,
+                       RateLimiter)
 
 
 class Engine:
@@ -44,8 +45,14 @@ class Engine:
     WATCHER_ACTIONS = frozenset({"hibernate", "lock"})
 
     def run(self, action: str, params: dict[str, Any], actor: str,
-            via: str) -> ActionResult:
-        """Execute an allowlisted action. Never raises for expected errors."""
+            via: str, role: str = "owner") -> ActionResult:
+        """Execute an allowlisted action. Never raises for expected errors.
+
+        ``role`` is the role of the phone that asked ("owner" or "viewer"). A viewer may only
+        run VIEWER_ACTIONS: this is the second layer behind the HTTP check."""
+        if role != "owner" and action not in VIEWER_ACTIONS:
+            self.audit.log(actor, via, action, safe_params(action, params), "rejected", "viewer role")
+            return ActionResult(False, "This phone has the viewer role: it can only look.")
         if via in self.RESERVED_VIA:
             self.audit.log(actor, via, action, params, "rejected", "reserved channel")
             return ActionResult(False, "Not allowed.")

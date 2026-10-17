@@ -34,10 +34,10 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _pending ??= PendingController(
-      widget.api,
-      onError: AppScope.of(context).onError,
-    )..startPolling();
+    final app = AppScope.of(context);
+    _pending ??= PendingController(widget.api, onError: app.onError);
+    // a viewer phone has no confirmations to wait for (and the agent would refuse the request)
+    if (!(app.current?.isViewer ?? false)) _pending!.startPolling();
   }
 
   @override
@@ -51,6 +51,7 @@ class _HomeShellState extends State<HomeShell> {
     final app = AppScope.of(context);
     final s = app.s;
     final pending = _pending!;
+    final viewer = app.current?.isViewer ?? false;
     return Scaffold(
       appBar: AppBar(
         title: InkWell(
@@ -75,7 +76,7 @@ class _HomeShellState extends State<HomeShell> {
         actions: const [SettingsMenu()],
       ),
       body: IndexedStack(
-        index: _index,
+        index: viewer ? (_index == 4 ? 1 : 0) : _index,
         children: [
           HomeTab(
             api: widget.api,
@@ -83,10 +84,12 @@ class _HomeShellState extends State<HomeShell> {
             pollInterval: widget.pollInterval,
             onOpenPending: () => setState(() => _index = 1),
           ),
-          PendingScreen(controller: pending),
-          // Audit reloads each time its tab is opened.
-          _index == 2 ? AuditScreen(api: widget.api) : const SizedBox.shrink(),
-          const SmsHelpScreen(),
+          if (!viewer) ...[
+            PendingScreen(controller: pending),
+            // Audit reloads each time its tab is opened.
+            _index == 2 ? AuditScreen(api: widget.api) : const SizedBox.shrink(),
+            const SmsHelpScreen(),
+          ],
           // The viewer keeps its picture and timer only while its tab is open.
           _index == 4 ? ScreenView(api: widget.api) : const SizedBox.shrink(),
         ],
@@ -96,28 +99,30 @@ class _HomeShellState extends State<HomeShell> {
         children: [
           EmergencyBar(api: widget.api),
           NavigationBar(
-            selectedIndex: _index,
-            onDestinationSelected: (i) => setState(() => _index = i),
+            selectedIndex: viewer ? (_index == 4 ? 1 : 0) : _index,
+            onDestinationSelected: (i) => setState(() => _index = viewer ? (i == 1 ? 4 : 0) : i),
             destinations: [
               NavigationDestination(
                 icon: const Icon(Icons.home_outlined),
                 label: s.t('nav_home'),
               ),
-              NavigationDestination(
-                icon: PendingBadge(
-                  controller: pending,
-                  child: const Icon(Icons.verified_user_outlined),
+              if (!viewer) ...[
+                NavigationDestination(
+                  icon: PendingBadge(
+                    controller: pending,
+                    child: const Icon(Icons.verified_user_outlined),
+                  ),
+                  label: s.t('nav_pending'),
                 ),
-                label: s.t('nav_pending'),
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.history),
-                label: s.t('nav_audit'),
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.sms_outlined),
-                label: s.t('nav_sms'),
-              ),
+                NavigationDestination(
+                  icon: const Icon(Icons.history),
+                  label: s.t('nav_audit'),
+                ),
+                NavigationDestination(
+                  icon: const Icon(Icons.sms_outlined),
+                  label: s.t('nav_sms'),
+                ),
+              ],
               NavigationDestination(
                 icon: const Icon(Icons.monitor_outlined),
                 label: s.t('nav_screen'),

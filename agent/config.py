@@ -51,6 +51,8 @@ class Settings:
     shutdown_delay_seconds: int = 30
     requests_per_minute: int = 60
     pairing_ttl_seconds: int = 300
+    # How long a phone token lives, in days, counted from pairing. 0 = no expiry (default).
+    token_ttl_days: int = 0
     confirm_ttl_seconds: int = 60
     max_pair_failures: int = 5
     pair_lockout_seconds: int = 300

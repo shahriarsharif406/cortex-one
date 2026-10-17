@@ -257,7 +257,14 @@ class AppState extends ChangeNotifier {
       }
     }
     if (title.isEmpty) title = 'Computer ${computers.length + 1}';
+    var role = 'owner';
+    try {
+      role = await apiFactory(base, token).role();
+    } catch (_) {
+      role = 'owner'; // cannot tell: the agent still enforces the real role on every request
+    }
     final computer = Computer(
+      role: role,
       id: _newId(),
       name: title,
       endpoints: endpoints,

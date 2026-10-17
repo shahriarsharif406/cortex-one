@@ -13,12 +13,15 @@ CREATE TABLE IF NOT EXISTS devices (
     token_hash TEXT NOT NULL UNIQUE,
     created_at REAL NOT NULL,
     last_seen REAL,
-    revoked INTEGER NOT NULL DEFAULT 0
+    revoked INTEGER NOT NULL DEFAULT 0,
+    role TEXT NOT NULL DEFAULT 'owner',
+    last_link TEXT
 );
 CREATE TABLE IF NOT EXISTS pairing_codes (
     code_hash TEXT PRIMARY KEY,
     expires_at REAL NOT NULL,
-    used INTEGER NOT NULL DEFAULT 0
+    used INTEGER NOT NULL DEFAULT 0,
+    role TEXT NOT NULL DEFAULT 'owner'
 );
 CREATE TABLE IF NOT EXISTS ai_usage (
     day TEXT PRIMARY KEY,
@@ -67,6 +70,12 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.conn() as c:
             c.executescript(SCHEMA)
+            for table, col, ddl in (
+                    ("devices", "role", "ALTER TABLE devices ADD COLUMN role TEXT NOT NULL DEFAULT 'owner'"),
+                    ("devices", "last_link", "ALTER TABLE devices ADD COLUMN last_link TEXT"),
+                    ("pairing_codes", "role", "ALTER TABLE pairing_codes ADD COLUMN role TEXT NOT NULL DEFAULT 'owner'")):
+                if col not in [r[1] for r in c.execute(f"PRAGMA table_info({table})")]:
+                    c.execute(ddl)       # a database made by an earlier build keeps working
             cols = [r[1] for r in c.execute("PRAGMA table_info(ai_history)")]
             if "device_id" not in cols:          # table made by an earlier build
                 c.execute("ALTER TABLE ai_history ADD COLUMN device_id INTEGER NOT NULL DEFAULT 0")

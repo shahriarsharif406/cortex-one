@@ -291,6 +291,12 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
             out.append(Check(WARN, f"coding_projects সমস্যা: {prob}", f"coding_projects problem: {prob}"))
         if projects:
             out.append(Check(OK, f"{len(projects)}টি কোডিং প্রজেক্ট ঠিক আছে", f"{len(projects)} coding project(s) valid"))
+    ttl = settings.token_ttl_days
+    if isinstance(ttl, int) and not isinstance(ttl, bool) and ttl > 0:
+        out.append(Check(OK, f"টোকেন {ttl} দিন পরে মেয়াদোত্তীর্ণ হবে", f"phone tokens expire after {ttl} day(s)"))
+    else:
+        out.append(Check(WARN, "টোকেনের মেয়াদ নেই (token_ttl_days = 0); হারানো ফোন revoke করুন",
+                         "tokens never expire (token_ttl_days = 0); revoke a lost phone"))
     from .localai import LocalAIError, check_local_endpoint
 
     if settings.ai_provider not in ("anthropic", "local"):

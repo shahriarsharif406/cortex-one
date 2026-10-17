@@ -71,9 +71,14 @@ def cmd_init_config(settings: Settings, _args) -> int:
     return 0
 
 
-def cmd_pair(settings: Settings, _args) -> int:
-    code = Engine(settings).pairing.create_code()
-    print(f"Pairing code: {code}  (valid {settings.pairing_ttl_seconds // 60} min, one use)")
+def cmd_pair(settings: Settings, args) -> int:
+    role = getattr(args, "role", "owner")
+    code = Engine(settings).pairing.create_code(role)
+    print(f"Pairing code: {code}  (valid {settings.pairing_ttl_seconds // 60} min, one use, "
+          f"role: {role})")
+    if role == "viewer":
+        print("A viewer phone can only look: status, system info, process names, screenshots, "
+              "alerts. It cannot change anything, use the AI or see files.")
     return 0
 
 
@@ -82,7 +87,14 @@ def cmd_devices(settings: Settings, _args) -> int:
         seen = (time.strftime("%Y-%m-%d %H:%M", time.localtime(d["last_seen"]))
                 if d["last_seen"] else "never")
         flag = " (revoked)" if d["revoked"] else ""
-        print(f"{d['id']}: {d['name']}  last seen {seen}{flag}")
+        link = d.get("last_link") or "-"
+        if d.get("expired"):
+            flag += " (EXPIRED: pair again)"
+        elif d.get("expires_at"):
+            days = max(0, int((d["expires_at"] - time.time()) // 86400))
+            flag += f" (token expires in {days} d)"
+        print(f"{d['id']}: {d['name']}  role {d.get('role', 'owner')}  last seen {seen}  "
+              f"link {link}{flag}")
     return 0
 
 
@@ -217,7 +229,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--data-dir", help="override the data folder")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("serve", help="start the agent").set_defaults(fn=cmd_serve)
-    sub.add_parser("pair", help="print a one-time pairing code").set_defaults(fn=cmd_pair)
+    pr = sub.add_parser("pair", help="print a one-time pairing code")
+    pr.add_argument("--role", choices=("owner", "viewer"), default="owner",
+                    help="viewer = a phone that can only look (status, screenshots, alerts)")
+    pr.set_defaults(fn=cmd_pair)
     sub.add_parser("devices", help="list paired phones").set_defaults(fn=cmd_devices)
     r = sub.add_parser("revoke", help="revoke a phone")
     r.add_argument("device_id", type=int)

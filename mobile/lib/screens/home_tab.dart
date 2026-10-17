@@ -362,13 +362,23 @@ class _HomeTabState extends State<HomeTab> {
               computer: app.current!,
               monitor: app.monitorFor(app.current!),
             ),
-            PowerCard(
-              computer: app.current!,
-              api: widget.api,
-              monitor: app.monitorFor(app.current!),
-            ),
+            if (app.current!.isViewer)
+              Card(
+                key: const Key('viewer_note'),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(s.t('viewer_note')),
+                ),
+              )
+            else
+              PowerCard(
+                computer: app.current!,
+                api: widget.api,
+                monitor: app.monitorFor(app.current!),
+              ),
           ],
           _statusCard(context),
+          if (!(app.current?.isViewer ?? false)) ...[
           const SizedBox(height: 16),
           Text(
             s.t('command_title'),
@@ -595,6 +605,7 @@ class _HomeTabState extends State<HomeTab> {
               title: Text(s.t('tools_title')),
               children: [ToolsCard(computer: app.current!, api: widget.api)],
             ),
+          ],
         ],
       ),
     );

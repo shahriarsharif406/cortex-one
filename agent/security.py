@@ -106,10 +106,18 @@ class LockoutTracker:
 
 
 # ----------------------------------------------------------------- pairing
+ROLES = ("owner", "viewer")
+
+# What a "viewer" phone may do: look, never change. Everything else is refused (HTTP 403 and,
+# as a second layer, inside Engine.run). The list is deliberately short.
+VIEWER_ACTIONS = frozenset({"status", "system_info", "list_processes", "take_screenshot"})
+
+
 @dataclass(frozen=True)
 class Device:
     id: int
     name: str
+    role: str = "owner"
 
 
 class PairingLocked(Exception):
@@ -132,28 +140,36 @@ class PairingManager:
         self.global_lockout = LockoutTracker(
             settings.max_pair_failures * 10, settings.pair_lockout_seconds, lockout_now)
 
-    def create_code(self) -> str:
-        """Create a one-time 6-digit code. Older unused codes are discarded."""
+    def create_code(self, role: str = "owner") -> str:
+        """Create a one-time 6-digit code for a phone of the given role ("owner" or "viewer").
+        Older unused codes are discarded."""
+        if role not in ROLES:
+            raise ValueError("role must be 'owner' or 'viewer'")
         code = f"{secrets.randbelow(1_000_000):06d}"
         with self.db.conn() as c:
             c.execute("DELETE FROM pairing_codes")
             c.execute(
-                "INSERT INTO pairing_codes (code_hash, expires_at) VALUES (?, ?)",
-                (sha256_hex(code), self.now() + self.settings.pairing_ttl_seconds),
+                "INSERT INTO pairing_codes (code_hash, expires_at, role) VALUES (?, ?, ?)",
+                (sha256_hex(code), self.now() + self.settings.pairing_ttl_seconds, role),
             )
         return code
 
     def pair(self, code: str, device_name: str, client: str = "") -> str | None:
+        return (self.pair_with_role(code, device_name, client) or (None, None))[0]
+
+    def pair_with_role(self, code: str, device_name: str, client: str = "") -> tuple[str, str] | None:
         """Exchange a valid code for a device token, or return None."""
         key = f"pairing:{client}"
         if self.lockout.is_locked(key) or self.global_lockout.is_locked("pairing"):
             raise PairingLocked()
         name = (device_name or "").strip()[:60] or "phone"
         ok = False
+        role = "owner"
         with self.db.conn() as c:
             row = c.execute(
-                "SELECT code_hash, expires_at, used FROM pairing_codes"
+                "SELECT code_hash, expires_at, used, role FROM pairing_codes"
             ).fetchone()
+            role = row["role"] if row and row["role"] in ROLES else "owner"
             if (row and not row["used"] and row["expires_at"] >= self.now()
                     and hmac.compare_digest(row["code_hash"], sha256_hex(str(code)))):
                 # single use even under a race: only one UPDATE can flip used 0 -> 1
@@ -166,31 +182,56 @@ class PairingManager:
         token = secrets.token_urlsafe(32)
         with self.db.conn() as c:
             c.execute(
-                "INSERT INTO devices (name, token_hash, created_at) VALUES (?, ?, ?)",
-                (name, sha256_hex(token), self.now()),
+                "INSERT INTO devices (name, token_hash, created_at, role) VALUES (?, ?, ?, ?)",
+                (name, sha256_hex(token), self.now(), role),
             )
-        return token
+        return token, role
 
     def authenticate(self, token: str | None) -> Device | None:
         if not token:
             return None
         with self.db.conn() as c:
             row = c.execute(
-                "SELECT id, name FROM devices WHERE token_hash = ? AND revoked = 0",
+                "SELECT id, name, role, created_at FROM devices WHERE token_hash = ? AND revoked = 0",
                 (sha256_hex(token),),
             ).fetchone()
             if not row:
                 return None
+            ttl = self.token_ttl_seconds()
+            if ttl and self.now() - row["created_at"] > ttl:
+                return None          # the token has expired: pair again
             c.execute("UPDATE devices SET last_seen = ? WHERE id = ?",
                       (self.now(), row["id"]))
-        return Device(id=row["id"], name=row["name"])
+        return Device(id=row["id"], name=row["name"],
+                      role=row["role"] if row["role"] in ROLES else "viewer")
+
+    def token_ttl_seconds(self) -> int:
+        v = getattr(self.settings, "token_ttl_days", 0)
+        if isinstance(v, bool) or not isinstance(v, int) or v <= 0:
+            return 0
+        return min(v, 3650) * 86400
+
+    def touch_link(self, device_id: int, kind: str) -> None:
+        """Remember which link (tailscale / lan / loopback) this phone last used."""
+        if kind not in ("tailscale", "lan", "loopback"):
+            return
+        with self.db.conn() as c:
+            c.execute("UPDATE devices SET last_link = ? WHERE id = ? AND COALESCE(last_link, '') != ?",
+                      (kind, device_id, kind))
 
     def list_devices(self) -> list[dict[str, Any]]:
         with self.db.conn() as c:
             rows = c.execute(
-                "SELECT id, name, created_at, last_seen, revoked FROM devices"
+                "SELECT id, name, created_at, last_seen, revoked, role, last_link FROM devices"
                 " ORDER BY id").fetchall()
-        return [dict(r) for r in rows]
+        ttl = self.token_ttl_seconds()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["expires_at"] = (d["created_at"] + ttl) if ttl else None
+            d["expired"] = bool(ttl and self.now() > d["expires_at"])
+            out.append(d)
+        return out
 
     def revoke(self, device_id: int) -> bool:
         with self.db.conn() as c:
