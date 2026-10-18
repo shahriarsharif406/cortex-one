@@ -85,7 +85,7 @@ Frame sizes: PRESS 24 bytes, STATE? 22, CALIBRATE 24, PING 22.
 | 0 | 1 | version = `0x01` |
 | 1 | 1 | status |
 | 2 | 4 | counter of the command being answered |
-| 6 | 1 | laptop: 0 looks OFF, 1 looks ON, 2 unknown (no sensor) |
+| 6 | 1 | laptop: low nibble state, 0 looks OFF, 1 looks ON, 2 unknown (no sensor), 3 BLINK (power LED blinks = asleep); high nibble = coarse raw light level 0..15 (0 without a light sensor) |
 | 7 | 1 | servo: 0 rest, 1 pressing, 2 calibrating |
 | 8 | 16 | tag = first 16 bytes of `HMAC-SHA256(key, device_id ‖ 'R' ‖ version ‖ status ‖ counter(4) ‖ laptop ‖ servo)` |
 
@@ -121,6 +121,15 @@ even when off ("USB charging"), so "ON" can be wrong.** That is why the rule is 
 Pressing the power button of a running laptop puts it to sleep or shuts it down, depending on the
 Windows setting "power button action". `scripts/set-power-plan.ps1 -PowerButton Sleep` (default)
 sets it to Sleep; `Nothing` makes a press on a running laptop harmless.
+
+### 7.1 Optional power-LED light sensor (UNTESTED)
+
+A photoresistor/phototransistor divider aimed at the laptop's power LED (GPIO 35, ADC) is an alternative
+to the USB 5 V sense. The firmware keeps the min and max of 12-bit readings over a 3 s window:
+`max - min >= 400` => BLINK (sleep), else `min >= 1200` => ON, else OFF; `lo > hi` => unknown. The raw
+nibble is `max >> 8` (0..15). `reference.py classify_led` is the reference, `cw_auth.h classify_led`
+the firmware copy, and `test_vectors.json` `led_cases` pin both. Phone rules: BLINK + `ON` presses
+(wake) without FORCE; BLINK + plain `PRESS` needs FORCE (the reading could be wrong).
 
 ## 8. Counter handling on the phone
 

@@ -54,7 +54,7 @@ class FakeApi implements CortexApi {
   Health healthAnswer = const Health(
     computerId: 'abc123',
     computerName: 'Laptop',
-    version: '1.1.0-rc1',
+    version: '1.1.0-rc2',
     batteryPercent: 77,
     plugged: true,
   );

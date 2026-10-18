@@ -51,6 +51,10 @@ for (const p of v.parse_cases) {
   expect('parse ' + p.name, names[r], p.expect);
 }
 
+for (const c of (v.led_cases || [])) {
+  const b = x.t_led(c.lo, c.hi);
+  expect('led ' + c.lo + '/' + c.hi, [b & 15, b >> 4].join(','), [c.state, c.raw4].join(','));
+}
 for (const r of v.responses) {
   x.t_response(base + KEY, key.length, base + DEV, r.status, r.counter >>> 0, r.laptop, r.servo, base + OUT);
   expect('response ' + r.name, hex(get(OUT, 24)), r.frame_hex);

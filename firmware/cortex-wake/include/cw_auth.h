@@ -194,4 +194,22 @@ inline void build_response(const uint8_t* key, size_t key_len, const uint8_t dev
 // Is a PRESS duration acceptable? Refused (not clamped) when outside the firmware limits.
 inline bool press_ms_ok(uint16_t ms) { return ms >= kMinPressMs && ms <= kMaxPressMs; }
 
+
+// ---- power-LED light sensor (optional). Mirrors docs/cortex-wake/reference.py classify_led().
+// laptop byte of an answer: low nibble state (0 off, 1 on, 2 unknown, 3 blink), high nibble raw level.
+enum Laptop : uint8_t { LAPTOP_OFF = 0, LAPTOP_ON = 1, LAPTOP_UNKNOWN = 2, LAPTOP_BLINK = 3 };
+static const int LED_SWING_MIN = 400;
+static const int LED_ON_MIN = 1200;
+inline uint8_t classify_led(int lo, int hi) {
+  if (lo < 0) lo = 0;
+  if (hi < 0) hi = 0;
+  if (lo > 4095) lo = 4095;
+  if (hi > 4095) hi = 4095;
+  if (lo > hi) return uint8_t(LAPTOP_UNKNOWN);
+  int raw4 = hi >> 8;
+  if (raw4 > 15) raw4 = 15;
+  uint8_t state = (hi - lo >= LED_SWING_MIN) ? LAPTOP_BLINK : (lo >= LED_ON_MIN ? LAPTOP_ON : LAPTOP_OFF);
+  return uint8_t((raw4 << 4) | state);
+}
+
 }  // namespace cw

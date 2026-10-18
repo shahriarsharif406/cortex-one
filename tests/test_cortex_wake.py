@@ -123,3 +123,26 @@ def test_cpp_header_passes_the_same_vectors_via_wasm():
         pytest.skip("no clang with wasm32 + wasm-ld (set CW_CLANG_DIR)")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "0 failures" in proc.stdout
+
+
+def test_led_classifier_vectors_and_rules():
+    cases = vectors()["led_cases"]
+    assert len(cases) >= 10
+    for c in cases:
+        assert list(ref.classify_led(c["lo"], c["hi"])) == [c["state"], c["raw4"]]
+    # steady dark = off, steady bright = on, swinging = blink, nonsense = unknown
+    assert ref.classify_led(0, 40)[0] == ref.LAPTOP_OFF
+    assert ref.classify_led(3000, 3100)[0] == ref.LAPTOP_ON
+    assert ref.classify_led(100, 3000)[0] == ref.LAPTOP_BLINK
+    assert ref.classify_led(2000, 100)[0] == ref.LAPTOP_UNKNOWN
+    # the answer byte carries state + raw level and still verifies as a normal frame
+    b = ref.laptop_byte(ref.LAPTOP_BLINK, 3)
+    ok, status, counter, laptop, servo = ref.parse_response(
+        ref.build_response(KEY, DEV, ref.ST_OK, 5, b, 0), KEY, DEV)
+    assert ok and laptop & 15 == ref.LAPTOP_BLINK and laptop >> 4 == 3
+
+
+def test_led_vectors_tampering_is_caught():
+    v = vectors()
+    v["led_cases"][0]["state"] = 1
+    assert ref.self_check(v)

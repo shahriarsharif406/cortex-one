@@ -36,7 +36,9 @@ enum CwCmd {
 const int cwStOk = 0, cwStBadArgs = 1, cwStBusy = 2, cwStCalLocked = 3, cwStRate = 4;
 
 /// What the ESP32's state sensor says (response `laptop` byte).
-const int cwLaptopOff = 0, cwLaptopOn = 1, cwLaptopUnknown = 2;
+/// The byte holds the state in its low nibble and a coarse raw light level (0..15, 0 = no light
+/// sensor) in its high nibble. [cwLaptopBlink] = the power LED blinks = probably asleep.
+const int cwLaptopOff = 0, cwLaptopOn = 1, cwLaptopUnknown = 2, cwLaptopBlink = 3;
 
 enum CwParse { ok, badLength, badVersion, badCmd, badTag, replay, jump }
 
@@ -146,13 +148,17 @@ class CwResponse {
     required this.counter,
     required this.laptop,
     required this.servo,
+    this.senseRaw = 0,
   });
 
   final int status;
   final int counter;
 
-  /// cwLaptopOff | cwLaptopOn | cwLaptopUnknown
+  /// cwLaptopOff | cwLaptopOn | cwLaptopUnknown | cwLaptopBlink (low nibble of the byte)
   final int laptop;
+
+  /// coarse raw light level 0..15 (high nibble); 0 without a light sensor
+  final int senseRaw;
 
   /// 0 at rest, 1 pressing, 2 calibrating
   final int servo;
@@ -207,7 +213,13 @@ CwResponse? cwParseResponse(Uint8List frame, Uint8List key, Uint8List deviceId) 
   if (!_ctEqual(tag, _responseTag(key, deviceId, status, counter, laptop, servo))) {
     return null;
   }
-  return CwResponse(status: status, counter: counter, laptop: laptop, servo: servo);
+  return CwResponse(
+    status: status,
+    counter: counter,
+    laptop: laptop & 0x0F,
+    servo: servo,
+    senseRaw: laptop >> 4,
+  );
 }
 
 /// The app's side of the counter: strictly increasing, persisted BEFORE a frame is sent

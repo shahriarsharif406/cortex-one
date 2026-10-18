@@ -168,6 +168,80 @@
       "expect": "bad_tag"
     }
   ],
+  "led_cases": [
+    {
+      "lo": 0,
+      "hi": 40,
+      "state": 0,
+      "raw4": 0
+    },
+    {
+      "lo": 0,
+      "hi": 0,
+      "state": 0,
+      "raw4": 0
+    },
+    {
+      "lo": 50,
+      "hi": 300,
+      "state": 0,
+      "raw4": 1
+    },
+    {
+      "lo": 3000,
+      "hi": 3100,
+      "state": 1,
+      "raw4": 12
+    },
+    {
+      "lo": 1200,
+      "hi": 1250,
+      "state": 1,
+      "raw4": 4
+    },
+    {
+      "lo": 1199,
+      "hi": 1250,
+      "state": 0,
+      "raw4": 4
+    },
+    {
+      "lo": 100,
+      "hi": 3000,
+      "state": 3,
+      "raw4": 11
+    },
+    {
+      "lo": 0,
+      "hi": 400,
+      "state": 3,
+      "raw4": 1
+    },
+    {
+      "lo": 0,
+      "hi": 399,
+      "state": 0,
+      "raw4": 1
+    },
+    {
+      "lo": 4000,
+      "hi": 4095,
+      "state": 1,
+      "raw4": 15
+    },
+    {
+      "lo": 2000,
+      "hi": 100,
+      "state": 2,
+      "raw4": 0
+    },
+    {
+      "lo": -5,
+      "hi": 99999,
+      "state": 3,
+      "raw4": 15
+    }
+  ],
   "responses": [
     {
       "name": "ok_laptop_off",
@@ -216,6 +290,22 @@
       "laptop": 0,
       "servo": 0,
       "frame_hex": "01040000000c00002f05f30097074f2992da38ec6274c2fd"
+    },
+    {
+      "name": "led_blink_raw3",
+      "status": 0,
+      "counter": 13,
+      "laptop": 51,
+      "servo": 0,
+      "frame_hex": "01000000000d3300d80755ff9f080e233669bf7d0a51108a"
+    },
+    {
+      "name": "led_on_raw12",
+      "status": 0,
+      "counter": 14,
+      "laptop": 193,
+      "servo": 0,
+      "frame_hex": "01000000000ec100cc38618a7f7cfea39ab684a69dc075ac"
     }
   ],
   "bad_responses": [

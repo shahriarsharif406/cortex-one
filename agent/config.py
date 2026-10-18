@@ -7,6 +7,7 @@ salted hashes.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 from dataclasses import asdict, dataclass, field
@@ -31,6 +32,26 @@ def _default_apps() -> dict[str, list[str]]:
         "calculator": ["calc.exe"],
         "explorer": ["explorer.exe"],
     }
+
+
+class ConfigError(ValueError):
+    """config.json is unreadable or has a value of the wrong kind. The agent refuses to start
+    instead of guessing (a guess could widen a restriction)."""
+
+
+_INT_RANGES = {"port": (1, 65535)}
+
+
+def _kind_ok(default: object, value: object) -> bool:
+    if isinstance(default, bool):
+        return isinstance(value, bool)
+    if isinstance(default, int):
+        return isinstance(value, int) and not isinstance(value, bool)
+    if isinstance(default, float):
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if isinstance(default, (str, list, dict)):
+        return isinstance(value, type(default))
+    return True
 
 
 @dataclass
@@ -151,15 +172,39 @@ class Settings:
     @classmethod
     def load(cls, data_dir: Path | None = None) -> "Settings":
         s = cls(data_dir=Path(data_dir) if data_dir else default_data_dir())
+        s.unknown_keys = []
         if s.config_path.exists():
-            raw = json.loads(s.config_path.read_text(encoding="utf-8"))
+            try:
+                raw = json.loads(s.config_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise ConfigError(f"config.json cannot be read as JSON ({type(exc).__name__}). "
+                                  "Fix or delete it (init-config writes a fresh one).")
+            if not isinstance(raw, dict):
+                raise ConfigError("config.json must be a JSON object ({ ... }).")
+            fields = {f.name: f for f in dataclasses.fields(cls)}
             for key, value in raw.items():
-                if key == "data_dir" or not hasattr(s, key):
+                if key == "data_dir":
                     continue
-                if key == "allowed_roots":
-                    value = [Path(p) for p in value]
-                elif key == "screenshots_dir":
-                    value = Path(value)
+                if key not in fields:
+                    s.unknown_keys.append(str(key)[:40])
+                    continue
+                if key in ("allowed_roots", "screenshots_dir"):
+                    ok = (isinstance(value, list) and all(isinstance(p, str) and p.strip() for p in value)
+                          if key == "allowed_roots" else isinstance(value, str) and value.strip())
+                    if not ok:
+                        raise ConfigError(f"config.json: '{key}' must be "
+                                          f"{'a list of folder paths' if key == 'allowed_roots' else 'a folder path'}.")
+                    value = [Path(p) for p in value] if key == "allowed_roots" else Path(value)
+                else:
+                    f = fields[key]
+                    default = f.default_factory() if f.default_factory is not dataclasses.MISSING else f.default
+                    if not _kind_ok(default, value):
+                        raise ConfigError(f"config.json: '{key}' has the wrong kind of value "
+                                          f"(expected {type(default).__name__}).")
+                    if key in _INT_RANGES and not (_INT_RANGES[key][0] <= value <= _INT_RANGES[key][1]):
+                        raise ConfigError(f"config.json: '{key}' is out of range.")
+                    if isinstance(value, (int, float)) and not isinstance(value, bool) and value < 0:
+                        raise ConfigError(f"config.json: '{key}' must not be negative.")
                 setattr(s, key, value)
         return s
 

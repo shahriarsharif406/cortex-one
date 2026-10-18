@@ -80,6 +80,8 @@ void main() {
         final parsed = cwParseResponse(frame, key, dev)!;
         expect(parsed.status, r['status']);
         expect(parsed.counter, r['counter']);
+        expect(parsed.laptop, (r['laptop'] as int) & 0x0F);
+        expect(parsed.senseRaw, (r['laptop'] as int) >> 4);
       }
       for (final r in vectors['bad_responses'] as List) {
         expect(cwParseResponse(hex(r['frame_hex'] as String), key, dev), isNull, reason: r['name'] as String);
@@ -435,6 +437,25 @@ void main() {
       setUpGateway(laptop: cwLaptopOn);
       final no = await gw.handleSms(owner, 'PRESS ${code()}');
       expect(no, contains('Not pressed'));
+      expect(esp.presses, 0);
+      clock = clock.add(const Duration(minutes: 1));
+      expect(await gw.handleSms(owner, 'PRESS ${code()} FORCE'), contains('pressed'));
+      expect(esp.presses, 1);
+    });
+
+    test('power LED blinking (asleep): ON wakes it without FORCE, STATUS says asleep', () async {
+      setUpGateway(laptop: (3 << 4) | cwLaptopBlink);
+      expect(await gw.handleSms(owner, 'STATUS'), contains('ASLEEP'));
+      final r = await gw.handleSms(owner, 'ON ${code()}');
+      expect(r, contains('pressed'));
+      expect(r, isNot(contains('forced')));
+      expect(esp.presses, 1);
+    });
+
+    test('power LED blinking: a plain PRESS needs FORCE (the reading could be wrong)', () async {
+      setUpGateway(laptop: cwLaptopBlink);
+      final no = await gw.handleSms(owner, 'PRESS ${code()}');
+      expect(no, contains('blinks'));
       expect(esp.presses, 0);
       clock = clock.add(const Duration(minutes: 1));
       expect(await gw.handleSms(owner, 'PRESS ${code()} FORCE'), contains('pressed'));

@@ -81,7 +81,9 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
                startup_probe: Callable[[], str | None] = startup_task_state,
                battery_probe: Callable[[], object | None] | None = None,
                wake_probe: Callable[[], dict] | None = None,
-               adapter_probe: Callable[[], list] | None = None) -> list[Check]:
+               adapter_probe: Callable[[], list] | None = None,
+               netadapter_probe: Callable[[], list] | None = None,
+               show_mac: bool = False) -> list[Check]:
     env = os.environ if env is None else env
     v = version or sys.version_info[:2]
     out: list[Check] = []
@@ -191,7 +193,7 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
         if Path(settings.screenshots_dir).is_dir():
             out.append(Check(OK, "স্ক্রিনশট ফোল্ডার আছে", "screenshots folder exists"))
         else:
-            out.append(Check(WARN, "স্ক্রিনশট ফোল্ডার এখনো নেই (প্রথম screenshot-এ তৈরি হবে)",
+            out.append(Check(OK, "স্ক্রিনশট ফোল্ডার এখনো নেই (প্রথম screenshot-এ তৈরি হবে)",
                              "screenshots folder does not exist yet (created on first screenshot)"))
     except ActionError:
         out.append(Check(WARN, "স্ক্রিনশট ফোল্ডার allowed_roots-এর বাইরে; screenshot বন্ধ",
@@ -346,8 +348,18 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
     adapter_list = (adapter_probe or wakeinfo.adapters)()
     for a in adapter_list:
         ips = ", ".join(a["ipv4"]) or "-"
-        out.append(Check(OK, f"অ্যাডাপ্টার {a['name']}: {ips} MAC {a['mac'] or '-'} (শুধু এখানে দেখানো)",
-                         f"adapter {a['name']}: {ips} MAC {a['mac'] or '-'} (shown locally only)"))
+        mac_bn = f" MAC {a['mac'] or '-'} (শুধু এখানে দেখানো)" if show_mac else ""
+        mac_en = f" MAC {a['mac'] or '-'} (shown locally only)" if show_mac else ""
+        out.append(Check(OK, f"অ্যাডাপ্টার {a['name']}: {ips}{mac_bn}", f"adapter {a['name']}: {ips}{mac_en}"))
+    if caps.get("known") or netadapter_probe:
+        rows = (netadapter_probe or (lambda: wakeinfo.parse_netadapter_csv(
+            wakeinfo.default_adapter_runner()[1])))()
+        report = wakeinfo.adapter_wake_report(caps, rows)
+        for r, line in zip(report, wakeinfo.verdict_lines(report)):
+            lvl = OK if r["armed"] == "yes" and r["connected"] == "yes" else WARN
+            out.append(Check(lvl, f"{r['kind']} জাগানো: {line}",
+                             f"{line} [programmable {r['programmable']}, armed {r['armed']}, "
+                             f"connected {r['connected']}]"))
     if wakeinfo.tailscale_present(adapter_list):
         out.append(Check(OK, "Tailscale ঠিকানা আছে", "a Tailscale address is present"))
     else:
@@ -362,6 +374,10 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
     else:
         out.append(Check(WARN, "ব্যাকআপ ইন্টারফেস এখন নেই (টেদার/ডঙ্গল লাগান)",
                          "the backup interface is not present now (plug in the tether/dongle)"))
+    unknown = getattr(settings, "unknown_keys", [])
+    if unknown:
+        out.append(Check(WARN, f"config.json-এ অচেনা কী (বানান ভুল?): {', '.join(unknown[:8])}; এগুলো উপেক্ষা করা হয়",
+                         f"config.json has unknown keys (typo?): {', '.join(unknown[:8])}; they are ignored"))
     return out
 
 

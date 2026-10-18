@@ -42,5 +42,7 @@ __attribute__((used)) void t_response(const uint8_t* key, size_t klen, const uin
   cw::build_response(key, klen, dev, uint8_t(status), counter, uint8_t(laptop), uint8_t(servo), out);
 }
 
+__attribute__((used)) int t_led(int lo, int hi) { return cw::classify_led(lo, hi); }
+
 __attribute__((used)) int t_press_ok(int ms) { return cw::press_ms_ok(uint16_t(ms)) ? 1 : 0; }
 }

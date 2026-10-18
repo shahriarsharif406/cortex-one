@@ -247,3 +247,21 @@ GUI মোড ডিফল্টে বন্ধ (`gui_agent.enabled`)। চা
 ## ২৭. `network-failover` Wi-Fi বন্ধ করে রেখেছে
 
 আলাদা অ্যাডমিন টাস্কটি Wi-Fi অ্যাডাপ্টার বন্ধ করেছে কারণ ইন্টারনেট ছিল না আর টেদার চালু ছিল। প্রতি ১৫ মিনিটে সে নিজে পরীক্ষা করে ফেরত আনে। এখনই ফেরাতে (অ্যাডমিন PowerShell): `Enable-NetAdapter -Name "Wi-Fi"`। টাস্কটি সরাতে: `.\scripts\install-network-failover.ps1 -Remove -WifiAlias "Wi-Fi"`। লগ: `%ProgramData%\CortexOne\failover\failover.log`।
+
+# সেশন ৩-এর নতুন সমস্যাগুলো (v1.1.0-rc2)
+
+## ২৮. "config.json সমস্যা / config problem"
+
+এজেন্ট বা `doctor` শুরুতেই থেমে বলছে `config.json`-এ ভুল আছে (ভাঙা JSON, ভুল ধরনের মান, ঋণাত্মক সংখ্যা, পোর্ট সীমার বাইরে)। বার্তায় কোন কী-তে সমস্যা লেখা থাকে। ফাইল `%APPDATA%\CortexOne\config.json`; ঠিক করুন বা নাম বদলে `python -m agent.main init-config` দিয়ে নতুন বানান। এজেন্ট ইচ্ছা করেই অনুমান করে চলে না।
+
+## ২৯. `doctor`: "unknown keys (typo?)"
+
+config-এ এমন একটি কী আছে যা এজেন্ট চেনে না (বানান ভুল হতে পারে, যেমন `allowd_roots`)। ওই সেটিং কাজ করছে না। বানান ঠিক করুন।
+
+## ৩০. "Wi-Fi wake: armed (untested)" মানে কী?
+
+Windows জাগানোর অনুমতি দিয়েছে। বাস্তবে জাগবে কিনা রাউটার, BIOS, ড্রাইভার ও ঘুমের ধরনের ওপর নির্ভর করে। `docs\WAKE_TEST_BN.md` দিয়ে সত্যিকারের পরীক্ষা করুন। "Ethernet wake: armed but the adapter is not connected": ক্যাবল লাগান।
+
+## ৩১. `doctor --show-mac` কেন লাগে?
+
+MAC ঠিকানা সবসময় কনসোলে দেখানো হয় না, যাতে ভুলে স্ক্রিনশট/চ্যাটে চলে না যায়। ফোনের Wake-on-LAN অ্যাপে দিতে হলে `--show-mac` দিয়ে নিজের কনসোলে দেখুন, আর কাউকে পাঠাবেন না।

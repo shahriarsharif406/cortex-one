@@ -8,7 +8,7 @@ import secrets
 import sys
 import time
 
-from .config import Settings
+from .config import ConfigError, Settings
 from .engine import Engine
 from .security import hash_secret
 from .sms import normalize_number
@@ -48,12 +48,49 @@ def cmd_serve(settings: Settings, _args) -> int:
     return 0
 
 
-def cmd_doctor(settings: Settings, _args) -> int:
+def cmd_doctor(settings: Settings, args) -> int:
     from .doctor import FAIL, format_report, run_checks
 
-    checks = run_checks(settings)
+    checks = run_checks(settings, show_mac=bool(getattr(args, "show_mac", False)))
     print(format_report(checks))
     return 1 if any(c.level == FAIL for c in checks) else 0
+
+
+def cmd_wake_setup(settings: Settings, _args, ask=input, rows_fn=None) -> int:
+    """Interactive: add this computer's wake-capable adapters to ``wake_targets``.
+    The MACs are read locally and go only into config.json, never to the console."""
+    import re as _re
+
+    from . import wakeinfo
+
+    rows = (rows_fn or (lambda: wakeinfo.parse_netadapter_csv(wakeinfo.default_adapter_runner()[1])))()
+    cands = [r for r in rows if wakeinfo.adapter_kind(r) in ("wifi", "ethernet")
+             and _re.fullmatch(r"[0-9A-Fa-f]{2}([-:][0-9A-Fa-f]{2}){5}", r["mac"])]
+    if not cands:
+        print("কোনো Wi-Fi/Ethernet অ্যাডাপ্টার পাওয়া যায়নি / no Wi-Fi or Ethernet adapter found.")
+        return 1
+    print("এই কম্পিউটারের অ্যাডাপ্টার / adapters on this computer:")
+    for i, r in enumerate(cands, 1):
+        print(f"  {i}. {r['name']} ({wakeinfo.adapter_kind(r)}, {r['status'] or '?'})")
+    base = ask("এই কম্পিউটারের একটি নাম দিন (যেমন laptop) / name for this computer: ").strip().lower()
+    if not _re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,23}", base):
+        print("নামটি ঠিক নয় (a-z, 0-9, - _ , সর্বোচ্চ ২৪) / bad name (a-z 0-9 - _, max 24).")
+        return 1
+    targets = dict(settings.wake_targets) if isinstance(settings.wake_targets, dict) else {}
+    added = []
+    for r in cands:
+        key = f"{base}-{wakeinfo.adapter_kind(r)}"
+        if key in targets and ask(f"'{key}' আগে থেকেই আছে, বদলাবেন? / '{key}' exists, replace? [y/N] "
+                                  ).strip().lower() != "y":
+            continue
+        targets[key] = {"mac": r["mac"].replace("-", ":").lower(), "broadcast": "255.255.255.255"}
+        added.append(key)
+    settings.wake_targets = targets
+    settings.save()
+    print("যোগ হয়েছে (MAC শুধু config.json-এ) / added (MAC only in config.json): "
+          + (", ".join(added) or "nothing"))
+    print("এখন অন্য (সবসময় চালু) কম্পিউটারের config-এ এই এন্ট্রি বসান, wake_via দিয়ে।")
+    return 0
 
 
 def cmd_init_config(settings: Settings, _args) -> int:
@@ -252,7 +289,13 @@ def main(argv: list[str] | None = None) -> int:
     h = sub.add_parser("ai-history", help="the last AI tasks")
     h.add_argument("--limit", type=int, default=50)
     h.set_defaults(fn=cmd_ai_history)
-    sub.add_parser("doctor", help="check the setup").set_defaults(fn=cmd_doctor)
+    d = sub.add_parser("doctor", help="check the setup")
+    d.add_argument("--show-mac", action="store_true",
+                   help="also print adapter MAC addresses to this console (never to files)")
+    d.set_defaults(fn=cmd_doctor)
+    ws = sub.add_parser("wake-setup", help="add THIS computer's adapters to wake_targets "
+                        "(for the always-on computer that should wake it)")
+    ws.set_defaults(fn=cmd_wake_setup)
     sub.add_parser("init-config", help="write a default config.json if none exists"
                    ).set_defaults(fn=cmd_init_config)
     s = sub.add_parser("sms-setup", help="enable SMS control")
@@ -264,7 +307,11 @@ def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):  # Bangla output on legacy Windows consoles
         if stream is not None and hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
-    settings = Settings.load(args.data_dir)
+    try:
+        settings = Settings.load(args.data_dir)
+    except ConfigError as exc:
+        print(f"config.json সমস্যা / config problem: {exc}", file=sys.stderr)
+        return 2
     return args.fn(settings, args)
 
 

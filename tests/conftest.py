@@ -86,6 +86,7 @@ def _no_real_system_probes(monkeypatch):
 
     monkeypatch.setattr(wakeinfo, "default_runner", lambda cmd, timeout=15: (-1, ""))
     monkeypatch.setattr(wakeinfo, "adapters", lambda: [])
+    monkeypatch.setattr(wakeinfo, "default_adapter_runner", lambda timeout=20: (-1, ""))
     from agent import gui
 
     def _no_real_gui():

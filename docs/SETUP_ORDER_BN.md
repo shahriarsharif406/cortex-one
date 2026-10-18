@@ -57,6 +57,10 @@
 
 Wi-Fi বন্ধ করে (সাময়িকভাবে) দেখুন ফোন (মোবাইল ডেটায়, Tailscale চালু) ল্যাপটপে পৌঁছায় কিনা; অ্যাপে লিংক "SIM (ডেটা-সেভার)" দেখাবে।
 
+## ধাপ ৮ক: ঘুম থেকে জাগানোর পরীক্ষা (ল্যাপটপে)
+
+`.\scripts\wake-test-prep.ps1` চালান (শুধু দেখে), তারপর `docs\WAKE_TEST_BN.md` অনুযায়ী Sleep → ফোন থেকে ম্যাজিক প্যাকেট (আগে Wi-Fi, না জাগলে Ethernet)। ফল লিখে রাখুন: জাগলে Sleep-এর জন্য বাড়তি যন্ত্র লাগবে না। `python -m agent.main wake-setup` দিয়ে এন্ট্রি বানিয়ে সাহায্যকারী কম্পিউটারে `wake_targets` বসান।
+
 ## ধাপ ৯: ডেস্কটপের BIOS-এ Wake-on-LAN
 
 ১. BIOS/UEFI-তে "Wake on LAN" / "Power On By PCI-E" চালু (নাম মডেলভেদে)। ২. Windows → Device Manager → নেটওয়ার্ক কার্ড → Power Management → "Allow this device to wake the computer" ও "Only allow a magic packet"। ৩. ডেস্কটপে `powercfg /devicequery wake_armed` ও `... wake_programmable` চালিয়ে দেখুন কার্ডটি আছে কিনা (`python -m agent.main doctor`-ও দেখায়)। ৪. **তারের (Ethernet) সংযোগ** ব্যবহার করুন; Wi-Fi দিয়ে বন্ধ/হাইবারনেট থেকে প্রায় জাগে না। ৫. ডেস্কটপের MAC (`ipconfig /all`) নিন।

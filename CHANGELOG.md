@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.0-rc2
+
+Session 3: "finish everything that is left". Audit of session 2, the doctor/wake findings from the owner's real laptop, an end-to-end test, config hardening and docs. Still **not verified** on real hardware or services (see `NEEDS_ME.md`): real shutdown/sleep/lock/wake, a real wake packet, a real phone/APK/SMS, the Cortex Wake firmware and servo, the GUI mode on a real screen, a real Anthropic call.
+
+### Added
+- `doctor` wake section per adapter (type Wi-Fi/Ethernet, programmable, armed, connected, matched by description) with honest verdicts such as "Wi-Fi wake: armed (untested)" and "Ethernet wake: armed but the adapter is not connected". MAC addresses are printed only with `doctor --show-mac` and only to the local console.
+- `agent.main wake-setup`: interactive helper that writes this computer's adapters into `wake_targets` (MACs go only into config.json, never to the console).
+- `scripts/wake-test-prep.ps1` (read-only checks before a wake test) and `docs/WAKE_TEST_BN.md` (step-by-step Sleep wake test, Wi-Fi then Ethernet).
+- Cortex Wake: BUILD_GUIDE section for the HP EliteBook Folio 9480m power button (feel test, measurements, mounting concept, fallback decision tree) and an optional **power-LED light sensor** (photoresistor on GPIO 35): `STATE?` can now answer on / off / blink (= asleep) plus a coarse raw level (laptop byte: low nibble state, high nibble raw). Shared vectors (`led_cases`) pass in Python, C++ (WebAssembly) and Dart.
+- `tests/test_e2e_session3.py` (one scripted flow through the real FastAPI app, fakes only), `tests/test_config_fuzz.py`, `tests/test_wake_report.py`.
+- `docs/FIRST_DAY_BN.md` (10 steps to the first remote command).
+
+### Changed
+- `config.json` is now validated on load: unreadable JSON, a non-object root, a value of the wrong kind, a negative number or an out-of-range port raise `ConfigError` and the command exits with a clear message (no traceback, no silent guess). Unknown keys are reported as a `doctor` WARN.
+- `doctor` no longer prints adapter MAC addresses unless `--show-mac` is given.
+- Version is `1.1.0-rc2` for the agent and the app.
+
+### Security
+- Mutation-checked this session: see PROGRESS.md.
+
 ## 1.1.0-rc1
 
 Session 2: "reach and control my computers in any situation". Everything below is covered by automated tests that use fakes (fake sockets, fake processes, fake BLE/SMS, fake GUI backend, a fake local-model server). **Not verified** (see `NEEDS_ME.md`): any real shutdown/sleep/wake, a real phone or APK build, real SMS, the ESP32 firmware (never compiled) and servo hardware, the Kotlin gateway service (never compiled), the GUI mouse/keyboard code on a real screen, a real Anthropic call (also with pictures), a real local model, the admin scripts (parsed and `-WhatIf` only).

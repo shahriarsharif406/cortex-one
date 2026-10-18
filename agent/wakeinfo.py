@@ -112,3 +112,88 @@ def tailscale_present(adapter_list: list[dict[str, Any]]) -> bool:
     from .netbind import classify_address
 
     return any(classify_address(ip) == "tailscale" for a in adapter_list for ip in a["ipv4"])
+
+
+# ---------------------------------------------------------------- per-adapter report
+_NETADAPTER_CMD = ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                   "Get-NetAdapter -Physical | Select-Object Name,InterfaceDescription,Status,"
+                   "MacAddress | ConvertTo-Csv -NoTypeInformation"]
+
+
+def default_adapter_runner(timeout: float = 20) -> tuple[int, str]:
+    """One fixed, read-only Get-NetAdapter query. Not a general shell."""
+    try:
+        proc = subprocess.run(_NETADAPTER_CMD, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return -1, ""
+    return proc.returncode, (proc.stdout or "")[-16000:]
+
+
+def parse_netadapter_csv(text: str) -> list[dict[str, str]]:
+    """Rows with name, description, status, mac from ``ConvertTo-Csv`` output (tolerant)."""
+    import csv
+    import io
+
+    rows: list[dict[str, str]] = []
+    clean = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", text or "")
+    for rec in csv.DictReader(io.StringIO(clean)):
+        name = (rec.get("Name") or "").strip()
+        desc = (rec.get("InterfaceDescription") or "").strip()
+        if not name and not desc:
+            continue
+        rows.append({"name": name[:60], "description": desc[:100],
+                     "status": (rec.get("Status") or "").strip()[:20],
+                     "mac": (rec.get("MacAddress") or "").strip()[:20]})
+    return rows[:20]
+
+
+def adapter_kind(row: dict[str, str]) -> str:
+    text = f"{row.get('name', '')} {row.get('description', '')}".lower()
+    if any(w in text for w in WIFI_WORDS):
+        return "wifi"
+    if any(w in text for w in ("ethernet", "gigabit", "gbe", "i218", "i219", "realtek pcie", "lan")):
+        return "ethernet"
+    return "other"
+
+
+def adapter_wake_report(wake: dict[str, Any], rows: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """Per wifi/ethernet adapter: type, programmable, armed, connected (matched by description).
+    MACs stay out of this report; the caller adds them only for ``--show-mac``."""
+    armed = [a.lower() for a in wake.get("armed", [])]
+    prog = [a.lower() for a in wake.get("programmable", [])]
+    known = bool(wake.get("known"))
+    out = []
+
+    def listed(desc: str, names: list[str]) -> bool:
+        return bool(desc) and any(desc == n or desc in n or n in desc for n in names)
+
+    for row in rows:
+        kind = adapter_kind(row)
+        if kind == "other":
+            continue
+        desc = row["description"].lower()
+        out.append({
+            "name": row["name"], "description": row["description"], "kind": kind,
+            "programmable": ("yes" if listed(desc, prog) or listed(desc, armed) else "no") if known else "unknown",
+            "armed": ("yes" if listed(desc, armed) else "no") if known else "unknown",
+            "connected": "yes" if row["status"].lower() in ("up", "connected") else "no",
+        })
+    return out
+
+
+def verdict_lines(report: list[dict[str, Any]]) -> list[str]:
+    """Honest one-line verdicts, English. Armed never means 'works': it is untested."""
+    lines = []
+    for r in report:
+        label = "Wi-Fi" if r["kind"] == "wifi" else "Ethernet"
+        if r["armed"] == "unknown":
+            lines.append(f"{label} wake: unknown (powercfg could not be asked)")
+        elif r["armed"] == "yes" and r["connected"] == "no":
+            lines.append(f"{label} wake: armed but the adapter is not connected (cable unplugged / Wi-Fi off)")
+        elif r["armed"] == "yes":
+            lines.append(f"{label} wake: armed (untested)")
+        elif r["programmable"] == "yes":
+            lines.append(f"{label} wake: not armed, but Windows allows it (Device Manager > Power Management)")
+        else:
+            lines.append(f"{label} wake: not available for this adapter")
+    return lines

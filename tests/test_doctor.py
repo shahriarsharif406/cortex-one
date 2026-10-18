@@ -191,7 +191,7 @@ def test_doctor_critical_action_validation(settings):
 
 
 def test_doctor_screenshots_folder_exists_or_not(settings):
-    assert WARN in levels(probe_checks(settings), "does not exist yet")
+    assert OK in levels(probe_checks(settings), "does not exist yet")     # by design: made on first use
     settings.screenshots_dir.mkdir(parents=True)
     assert OK in levels(probe_checks(settings), "screenshots folder exists")
 

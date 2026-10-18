@@ -82,3 +82,20 @@ def test_scripts_parse(name):
     proc = subprocess.run(["powershell", "-NoProfile", "-Command", cmd],
                           capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_wake_test_prep_is_read_only_and_prints_no_mac():
+    text = (SCRIPTS / "wake-test-prep.ps1").read_text(encoding="utf-8")
+    code = "\n".join(l for l in text.splitlines() if not l.strip().startswith(("#", "<#", "Say ")))
+    for bad in ("Set-", "Disable-", "Enable-", "New-", "Remove-", "netsh", "reg add", "reg delete",
+                "powercfg /h", "deviceenablewake", "devicedisablewake", "shutdown", "Restart-", "Stop-Computer"):
+        assert bad.lower() not in code.lower(), bad
+    assert "MacAddress" not in code
+    assert "-WhatIf" not in code
+
+
+@pytest.mark.skipif(shutil.which("powershell") is None, reason="needs PowerShell")
+def test_wake_test_prep_parses():
+    cmd = ("$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile("
+           f"'{SCRIPTS / 'wake-test-prep.ps1'}',[ref]$null,[ref]$e); if ($e.Count) {{ exit 1 }}")
+    assert subprocess.run(["powershell", "-NoProfile", "-Command", cmd], timeout=60).returncode == 0

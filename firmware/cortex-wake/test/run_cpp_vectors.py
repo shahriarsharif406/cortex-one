@@ -51,7 +51,7 @@ def main() -> int:
         cmd = [clang, "--target=wasm32", "-std=c++17", "-O2", "-nostdlib", "-fno-exceptions", "-fno-rtti",
                "-Wall", "-Wextra", "-Werror", "-fuse-ld=" + str(clang_dir / "wasm-ld"),
                "-Wl,--no-entry"] + [f"-Wl,--export={n}" for n in (
-                   "scratch_ptr", "t_hmac", "t_parse", "t_response", "t_press_ok")] + [
+                   "scratch_ptr", "t_hmac", "t_parse", "t_response", "t_led", "t_press_ok")] + [
                str(HERE / "wasm_shim.cpp"), "-o", str(out)]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         if proc.returncode != 0:

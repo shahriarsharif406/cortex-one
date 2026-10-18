@@ -155,6 +155,7 @@ class GatewayController {
     final text = switch (laptop) {
       'on' => 'laptop looks ON',
       'off' => 'laptop looks OFF',
+      'blink' => 'power LED blinks: the laptop looks ASLEEP',
       _ => 'laptop state unknown (no sensor, or the USB port stays powered)',
     };
     return GatewayReply(ok: true, message: 'Cortex Wake: $text.', laptop: laptop);
@@ -163,6 +164,7 @@ class GatewayController {
   static String _laptopName(int b) => switch (b) {
     cwLaptopOn => 'on',
     cwLaptopOff => 'off',
+    cwLaptopBlink => 'blink',
     _ => 'unknown',
   };
 
@@ -203,6 +205,13 @@ class GatewayController {
               'Not pressed. To do it anyway: PRESS <code> FORCE.',
         );
       }
+    } else if (laptop == 'blink' && !wake && !force) {
+      return const GatewayReply(
+        ok: false,
+        laptop: 'blink',
+        message: 'Cortex Wake: the power LED blinks (laptop probably asleep). PRESS is held back '
+            'in case the reading is wrong. Use ON <code> to wake it, or PRESS <code> FORCE.',
+      );
     } else if (laptop == 'unknown' && !force) {
       return GatewayReply(
         ok: false,
@@ -214,7 +223,9 @@ class GatewayController {
     _lastPress = _now();
     final out = await session.press(pressMs);
     final a = out.response;
-    final forced = force && laptop != 'off' ? ' (forced; state was $laptop)' : '';
+    final forced = force && laptop != 'off' && !(wake && laptop == 'blink')
+        ? ' (forced; state was $laptop)'
+        : '';
     if (a == null) {
       _log('press_no_answer');
       return GatewayReply(

@@ -18,6 +18,9 @@ static const int PIN_SERVO = 18;        // servo signal. Power the servo from th
 static const int PIN_LED = 2;           // on-board LED
 static const int PIN_CAL_BUTTON = 0;    // BOOT button: opens a 60 s calibration window
 static const int PIN_SENSE = 34;        // optional: laptop USB 5 V through a divider (input only pin)
+static const int PIN_LIGHT = 35;        // optional: photoresistor/phototransistor divider aimed at the power LED (ADC1)
+static const uint32_t LIGHT_WINDOW_MS = 3000;   // one classification window
+static const uint32_t LIGHT_SAMPLE_MS = 40;
 
 static const uint32_t PRESS_WATCHDOG_MS = cw::kMaxPressMs + 500;   // servo is never held longer
 static const uint32_t MIN_PRESS_GAP_MS = 5000;
@@ -73,7 +76,30 @@ static void servoRest() {
 }
 
 // -------------------------------------------------------------------------- sensing
+#ifdef LIGHT_SENSOR_FITTED
+// Power-LED sensing: steady lit = ON, blinking = sleep, dark = OFF (classification lives in cw_auth.h,
+// shared with the test vectors). The result is the previous complete window.
+static uint8_t lightResult = 2;           // unknown until the first window is complete
+static int winLo = 4095, winHi = 0;
+static uint32_t winStart = 0, lastSample = 0;
+static void lightTick() {
+  uint32_t now = millis();
+  if (now - lastSample < LIGHT_SAMPLE_MS) return;
+  lastSample = now;
+  int v = analogRead(PIN_LIGHT);
+  if (v < winLo) winLo = v;
+  if (v > winHi) winHi = v;
+  if (now - winStart >= LIGHT_WINDOW_MS) {
+    lightResult = cw::classify_led(winLo, winHi);
+    winLo = 4095; winHi = 0; winStart = now;
+  }
+}
+#endif
+
 static uint8_t laptopState() {
+#ifdef LIGHT_SENSOR_FITTED
+  return lightResult;
+#endif
   // Without a sensor wired the pin floats: we cannot tell, so report "unknown" unless it was
   // enabled in config.h-like fashion. Here: sensor present only if SENSOR_FITTED is defined.
 #ifdef SENSOR_FITTED
@@ -204,6 +230,10 @@ void setup() {
 #ifdef SENSOR_FITTED
   pinMode(PIN_SENSE, INPUT);
 #endif
+#ifdef LIGHT_SENSOR_FITTED
+  pinMode(PIN_LIGHT, INPUT);
+  winStart = millis();
+#endif
   prefs.begin("cortexwake", false);
   storedCounter = prefs.getUInt("ctr", 0);
   angleRest = prefs.getInt("rest", DEFAULT_REST);
@@ -219,6 +249,9 @@ void setup() {
 }
 
 void loop() {
+#ifdef LIGHT_SENSOR_FITTED
+  lightTick();
+#endif
   if (havePending) {
     uint8_t copy[40];
     size_t n = pendingLen;

@@ -1,4 +1,4 @@
-# Cortex One — Windows এজেন্ট ও ফোন অ্যাপ (v1.1.0-rc1)
+# Cortex One — Windows এজেন্ট ও ফোন অ্যাপ (v1.1.0-rc2)
 
 FutureTech.ai-এর "One Command. Your Entire Computer." প্রজেক্ট: ল্যাপটপে চলা একটি **নিরাপদ এজেন্ট**, যাকে ফোন অ্যাপ (বা SMS) থেকে নিয়ন্ত্রিত কমান্ড পাঠানো যায়। AI অপারেটর বাংলা/ইংরেজি নির্দেশ বুঝে শুধু অনুমোদিত তালিকার কাজ করে।
 
@@ -196,3 +196,14 @@ SMS গেটওয়ে ফোনকে ল্যাপটপে `POST /sms/in
 ### নতুন API
 
 `GET /me` (নাম ও ভূমিকা), `GET /network`, `GET /gui/session`, `GET /gui/shot/{name}`; `/health` ও `/pair` বড় হয়েছে; `POST /ai/tasks`-এ ঐচ্ছিক `images`; `GET /screenshots/{name}?quality=low`। **viewer ভূমিকার ফোন** কেবল `status`, `system_info`, `list_processes`, `take_screenshot`, ছবি দেখা, `/alerts`, `/watch`, `/network`, `/ai/history`, `/me`, `/actions` (ছাঁকা তালিকা) ব্যবহার করতে পারে; বাকি সব `403`।
+
+## v1.1.0-rc2 — সেশন ৩: "যা বাকি ছিল শেষ করা" (যা নতুন)
+
+- `python -m agent.main doctor` এখন প্রতিটি অ্যাডাপ্টারের জন্য আলাদা লাইনে বলে: জাগানোর অনুমতি (programmable/armed), সংযুক্ত কিনা, যেমন **"Wi-Fi wake: armed (untested)"**। MAC ঠিকানা শুধু `doctor --show-mac` দিলে, শুধু আপনার কনসোলে দেখায়।
+- `python -m agent.main wake-setup`: এই কম্পিউটারের অ্যাডাপ্টার `wake_targets`-এ যোগ করে (MAC শুধু config.json-এ), যাতে সবসময়-চালু অন্য কম্পিউটার এটিকে জাগাতে পারে।
+- `scripts\wake-test-prep.ps1` (শুধু দেখে, কিছু বদলায় না) এবং `docs\WAKE_TEST_BN.md` (ফোন থেকে Sleep-জাগানোর পরীক্ষা, ধাপে ধাপে)।
+- `config.json` ভুল হলে (ভাঙা JSON, ভুল ধরনের মান, ঋণাত্মক সংখ্যা) এজেন্ট আর অনুমান করে না: পরিষ্কার বার্তা দিয়ে থামে। অচেনা কী `doctor`-এ WARN হয়।
+- Cortex Wake: HP EliteBook Folio 9480m-এর পাওয়ার বোতামের জন্য গাইড, এবং ঐচ্ছিক **পাওয়ার-LED আলো-সেন্সর** (on/off/blink)। **হার্ডওয়্যার ও ফার্মওয়্যার অপরীক্ষিত।**
+- `docs\FIRST_DAY_BN.md`: প্রথম দিনের ১০ ধাপ।
+- একটি এন্ড-টু-এন্ড টেস্ট (`tests/test_e2e_session3.py`) পুরো প্রবাহ নকল ব্যাকএন্ডে চালায়: জোড়া লাগানো, ভূমিকা, Wake-on-LAN, স্লিপ নিশ্চিতকরণ, ছবি-সহ AI যা শাটডাউনের অনুরোধ করে (শুধু অপেক্ষমাণ), কোডিং সেশন, GUI সেশন, জরুরি বন্ধ, এবং অডিটে কোনো গোপন/MAC/ছবির বাইট নেই কিনা।
+- সৎ কথা: আসল ম্যাজিক প্যাকেট, আসল স্লিপ/জাগানো, আসল ফোন, SMS, হার্ডওয়্যার, GUI মোড, আসল Anthropic কল **এখনও যাচাই হয়নি।** পরীক্ষার ধাপ `NEEDS_ME.md`-তে।

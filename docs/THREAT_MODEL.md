@@ -1,4 +1,4 @@
-# Cortex One - threat model (v1.1.0-rc1)
+# Cortex One - threat model (v1.1.0-rc2)
 
 Cortex One is a Windows agent that a phone (HTTP over Tailscale) or an SMS gateway can command, optionally through an AI operator (Anthropic Messages API). This document lists what is protected, who may attack it, where trust changes, which control answers which threat, and which test proves that control. Test names refer to files in `tests/`.
 
@@ -181,6 +181,14 @@ Residual risks: the owner decides what `argv` runs, so a bad config entry is the
 | A new route fails the matrix test until someone decides whether a viewer may use it | `test_every_route_has_an_explicit_role_decision` |
 | The role is fixed when the pairing code is made; the phone cannot ask for one; an unknown role in the database means viewer | `test_the_phone_cannot_ask_for_a_role`, `test_an_unknown_role_in_the_database_is_treated_as_a_viewer` |
 | Tokens may expire (`token_ttl_days`); revoke works on the very next request, including from the CLI while the server runs | `test_tokens_expire_after_the_configured_days`, `test_revoke_*` |
+
+### 4.16 Session 3 additions
+
+- **Config is untrusted input.** `Settings.load` raises `ConfigError` for unreadable JSON, a non-object root, a value of the wrong kind (for example `allowed_roots` as a string, which would otherwise be split into one path per character), negative numbers and an out-of-range port. `main` prints the problem and exits 2; nothing is guessed. Unknown keys are ignored but reported by `doctor`. `tests/test_config_fuzz.py` also throws junk at `hosts`, `wake_targets`, `coding_projects` and `gui_agent`: every bad value is an error or leaves the capability OFF, never a wider setting.
+- **MAC addresses stay local.** `doctor` prints them only with `--show-mac`, and only to the console. `wake-setup` writes them only into config.json and never prints them. `power_capabilities`, `/health`, audit, history and logs never contain them (`tests/test_e2e_session3.py` greps the audit tables and every HTTP body).
+- **New read-only OS queries** (fixed, no parameters, via `wakeinfo`): `powercfg /devicequery wake_armed|wake_programmable` and one `Get-NetAdapter -Physical` listing. Neither changes anything; they are not a shell and tests replace them with fakes.
+- **Power-LED light sensor** (Cortex Wake, optional, untested): the ESP32 reads an ADC and reports on/off/blink. It only informs the existing safety rule (ON wakes a blinking = asleep laptop; a plain PRESS on a blinking laptop still needs FORCE). A blinded or lit sensor can cause a wrong reading, never a press that the HMAC/counter rules would not allow.
+- **Read-only prep script** `scripts/wake-test-prep.ps1` is checked by a test for any changing command.
 
 ## 5. Residual risks (accepted or open)
 

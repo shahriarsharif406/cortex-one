@@ -71,6 +71,28 @@ def parse_command(frame: bytes, key: bytes, device_id: bytes, stored_counter: in
     return OK, cmd, counter, args
 
 
+# Laptop byte of an answer: low nibble = state, high nibble = coarse raw light level (0 = no light sensor).
+LAPTOP_OFF, LAPTOP_ON, LAPTOP_UNKNOWN, LAPTOP_BLINK = 0, 1, 2, 3
+LED_SWING_MIN = 400       # 12-bit ADC counts: max-min over the window above this = blinking
+LED_ON_MIN = 1200         # mean-ish level (we use max) at or above this and steady = lit
+
+
+def classify_led(lo: int, hi: int) -> tuple[int, int]:
+    """(state, raw4) from the min and max of a ~3 s window of 12-bit readings (0..4095).
+    blink = the light swings; on = steady and bright; off = steady and dark. raw4 = hi/256 (0..15)."""
+    lo, hi = max(0, min(4095, lo)), max(0, min(4095, hi))
+    if lo > hi:
+        return LAPTOP_UNKNOWN, 0
+    raw4 = min(15, hi >> 8)
+    if hi - lo >= LED_SWING_MIN:
+        return LAPTOP_BLINK, raw4
+    return (LAPTOP_ON if lo >= LED_ON_MIN else LAPTOP_OFF), raw4
+
+
+def laptop_byte(state: int, raw4: int) -> int:
+    return ((raw4 & 0x0F) << 4) | (state & 0x0F)
+
+
 def response_tag(key: bytes, device_id: bytes, status: int, counter: int, laptop: int, servo: int) -> bytes:
     msg = device_id + b"R" + bytes([VERSION, status]) + struct.pack(">I", counter) + bytes([laptop, servo])
     return mac(key, msg)[:TAG_LEN]
@@ -105,6 +127,10 @@ RFC4231 = [
     ("aa" * 20, "dd" * 50,
      "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe"),
 ]
+
+
+LED_CASES = [(0, 40), (0, 0), (50, 300), (3000, 3100), (1200, 1250), (1199, 1250), (100, 3000),
+             (0, 400), (0, 399), (4000, 4095), (2000, 100), (-5, 99999)]
 
 
 def generate() -> dict:
@@ -157,7 +183,9 @@ def generate() -> dict:
     for name, status, counter, laptop, servo in [
             ("ok_laptop_off", ST_OK, 7, 0, 0), ("ok_laptop_on", ST_OK, 8, 1, 0),
             ("busy", ST_BUSY, 9, 2, 1), ("bad_args", ST_BAD_ARGS, 10, 2, 0),
-            ("cal_locked", ST_CAL_LOCKED, 11, 2, 0), ("rate", ST_RATE, 12, 0, 0)]:
+            ("cal_locked", ST_CAL_LOCKED, 11, 2, 0), ("rate", ST_RATE, 12, 0, 0),
+            ("led_blink_raw3", ST_OK, 13, laptop_byte(LAPTOP_BLINK, 3), 0),
+            ("led_on_raw12", ST_OK, 14, laptop_byte(LAPTOP_ON, 12), 0)]:
         f = build_response(KEY, DEVICE_ID, status, counter, laptop, servo)
         resp.append({"name": name, "status": status, "counter": counter, "laptop": laptop,
                      "servo": servo, "frame_hex": f.hex()})
@@ -176,6 +204,8 @@ def generate() -> dict:
         "commands": cmds,
         "parse_cases": [{"name": n, "frame_hex": f.hex(), "stored_counter": s, "expect": e}
                         for n, f, s, e in parse],
+        "led_cases": [{"lo": lo, "hi": hi, "state": classify_led(lo, hi)[0], "raw4": classify_led(lo, hi)[1]}
+                      for lo, hi in LED_CASES],
         "responses": resp,
         "bad_responses": [{"name": "flipped_counter_bit", "frame_hex": bytes(bad_resp).hex()},
                           {"name": "truncated", "frame_hex": resp[0]["frame_hex"][:-2]}],
@@ -190,6 +220,9 @@ def self_check(v: dict) -> list[str]:
     """Re-verify the data of a vectors dict with the reference code. Returns problems."""
     problems = []
     key, dev = bytes.fromhex(v["key_hex"]), bytes.fromhex(v["device_id_hex"])
+    for c in v.get("led_cases", []):
+        if list(classify_led(c["lo"], c["hi"])) != [c["state"], c["raw4"]]:
+            problems.append(f"led case {c['lo']}/{c['hi']}")
     for t in v["hmac_sha256_rfc4231"]:
         if mac(bytes.fromhex(t["key_hex"]), bytes.fromhex(t["msg_hex"])).hex() != t["mac_hex"]:
             problems.append("rfc4231 mismatch")

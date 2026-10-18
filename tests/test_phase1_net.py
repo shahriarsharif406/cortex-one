@@ -391,7 +391,10 @@ def test_doctor_wake_and_adapters(settings):
     assert "Tailscale address is present" in text
     assert "backup interface is not present" in text
     assert "wake via Wi-Fi: yes" in text
-    assert "AA-BB-CC-DD-EE-FF" in text            # MACs only in the local doctor report
+    assert "AA-BB-CC-DD-EE-FF" not in text        # MACs only with --show-mac
+    checks = run_checks(settings, env={}, startup_probe=lambda: None, show_mac=True,
+                        wake_probe=lambda: caps, adapter_probe=lambda: adapters)
+    assert "AA-BB-CC-DD-EE-FF" in "\n".join(c.line() for c in checks)
 
 
 def test_wake_parse_none_and_unknown():
