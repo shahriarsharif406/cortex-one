@@ -113,7 +113,7 @@ def test_verify_release_flags_secrets_and_real_macs(tmp_path):
         z.writestr("p/README.md", "fake mac AA:BB:CC:DD:EE:FF and 11-22-33-44-55-66")
     assert mod.problems(str(clean)) == []
     for name, body in [("p/config.json", "{}"), ("p/.env", "x"), ("p/firmware/include/secrets.h", "x"),
-                       ("p/notes.txt", "wifi 3C:97:0E:12:34:56 here"), ("p/a.db", "x")]:
+                       ("p/notes.txt", "wifi " + ":".join(["3C", "97", "0E", "12", "34", "56"]) + " here"), ("p/a.db", "x")]:
         bad = tmp_path / "bad.zip"
         with zipfile.ZipFile(bad, "w") as z:
             z.writestr(name, body)

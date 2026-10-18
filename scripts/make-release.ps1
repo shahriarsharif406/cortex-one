@@ -40,7 +40,7 @@ $appVersion = ((Select-String -Path (Join-Path $ProjectDir 'mobile\pubspec.yaml'
 if ($appVersion -ne $version) { throw "Version mismatch: agent $version, app $appVersion. Fix agent/__init__.py or mobile/pubspec.yaml." }
 
 # the shared Cortex Wake test vectors must match their reference, and no firmware secret may be tracked
-& $py (Join-Path $ProjectDir 'docs\cortex-wakeeference.py') --check
+& $py (Join-Path $ProjectDir 'docs\cortex-wake\reference.py') --check
 if ($LASTEXITCODE -ne 0) { throw 'docs/cortex-wake/test_vectors.json does not match reference.py. Nothing was packed.' }
 $tracked = git ls-files
 if ($tracked -match 'firmware/cortex-wake/include/secrets\.h$') { throw 'firmware secrets.h is tracked by git. Remove it from git. Nothing was packed.' }
