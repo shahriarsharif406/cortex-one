@@ -102,7 +102,7 @@ def adapters() -> list[dict[str, Any]]:
             ipv4 = [a.address for a in addrs if getattr(a.family, "name", "") == "AF_INET"]
             mac = next((a.address for a in addrs
                         if getattr(a.family, "name", "") in ("AF_LINK", "AF_PACKET")), "")
-            out.append({"name": name[:60], "ipv4": ipv4, "mac": mac})
+            out.append({"name": re.sub(r"[\x00-\x1f\x7f]", " ", name)[:60], "ipv4": ipv4, "mac": mac})
     except Exception:
         pass
     return out
@@ -141,6 +141,7 @@ def parse_netadapter_csv(text: str) -> list[dict[str, str]]:
         desc = (rec.get("InterfaceDescription") or "").strip()
         if not name and not desc:
             continue
+        name, desc = (re.sub(r"[\x00-\x1f\x7f]", " ", v) for v in (name, desc))
         rows.append({"name": name[:60], "description": desc[:100],
                      "status": (rec.get("Status") or "").strip()[:20],
                      "mac": (rec.get("MacAddress") or "").strip()[:20]})

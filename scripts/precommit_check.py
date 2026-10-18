@@ -19,7 +19,7 @@ import subprocess
 import sys
 
 BLOCKED_NAMES = (".env", ".env.*", "config.json", "key.properties", "*.jks", "*.keystore",
-                 "*.p12", "*.pfx", "*.pem", "*.key", "id_rsa", "id_ed25519")
+                 "*.p12", "*.pfx", "*.pem", "*.key", "id_rsa", "id_ed25519", "secrets.h")
 ALLOWED_NAMES = (".env.example", "key.properties.example", "config.example.json")
 SKIP_CONTENT = ("*.lock", "package-lock.json", "*.png", "*.jpg", "*.jpeg", "*.ico", "*.webp",
                 "*.zip", "*.jar", "*.db", "*.ttf", "*.otf", "*.keystore.example", ".metadata")

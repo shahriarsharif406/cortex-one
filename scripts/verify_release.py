@@ -10,7 +10,7 @@ import sys
 import zipfile
 
 FORBIDDEN_NAMES = re.compile(
-    r"(^|/)(config\.json|\.env(\..*)?|secrets\.h|key\.properties|[^/]*\.(db|jks|keystore)|"
+    r"(^|/)(config\.json|\.env(\..*)?|secrets\.h|key\.properties|[^/]*\.(db|jks|keystore|pem|key|p12|pfx)|"
     r"PROGRESS\.md|FINAL_REPORT\.md|SESSION_PROMPT[^/]*\.md|\.claude/.*)$")
 MAC = re.compile(r"(?<![0-9A-Fa-f:-])([0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5})(?![0-9A-Fa-f:-])")
 FAKE_PREFIXES = ("AA:BB:CC", "11:22:33", "00:00:00", "FF:FF:FF", "01:02:03", "DE:AD:BE", "12:34:56",

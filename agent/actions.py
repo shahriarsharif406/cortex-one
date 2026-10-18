@@ -373,6 +373,13 @@ def make_folder(ctx: Context, params: dict[str, Any]) -> ActionResult:
 
 def open_app(ctx: Context, params: dict[str, Any]) -> ActionResult:
     name = params["name"].lower().strip()
+    if name == str(ctx.settings.remote_desktop_app or "").strip().lower():
+        # the remote-desktop helper has its own HIGH-risk action; no low-risk side door
+        raise ActionError("Use remote_desktop_start (it needs your confirmation) for that app.")
+    return _launch_app(ctx, name)
+
+
+def _launch_app(ctx: Context, name: str) -> ActionResult:
     cmd = ctx.settings.allowed_apps.get(name)
     if not cmd:
         raise ActionError(
@@ -825,7 +832,7 @@ def remote_desktop_status(ctx: Context, params: dict[str, Any]) -> ActionResult:
 
 def remote_desktop_start(ctx: Context, params: dict[str, Any]) -> ActionResult:
     key = str(ctx.settings.remote_desktop_app or "").strip().lower()
-    return open_app(ctx, {"name": key})
+    return _launch_app(ctx, key)
 
 
 # ---------------------------------------------------------- GUI-agent mode

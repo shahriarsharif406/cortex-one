@@ -181,6 +181,17 @@ def precheck_high(settings: Any, name: str, params: dict[str, Any]) -> str | Non
         projects, _ = parse_projects(settings)
         if str(params.get("name", "")).strip().lower() not in projects:
             return "That is not a configured coding project."
+    elif name == "gui_session_start":
+        from .gui import GuiPolicy
+
+        pol = GuiPolicy.from_settings(settings)
+        if not pol.enabled:
+            return "GUI control is switched off (gui_agent.enabled in config.json)."
+        if not pol.allowed_apps:
+            return "No app is approved for GUI control (gui_agent.allowed_apps)."
+        raw = str(params.get("minutes", "")).strip()
+        if not raw.isascii() or not raw.isdigit() or not 1 <= int(raw) <= pol.max_minutes:
+            return f"minutes must be 1 to {pol.max_minutes}."
     elif name == "remote_desktop_start":
         key = str(getattr(settings, "remote_desktop_app", "rustdesk")).strip().lower()
         if key not in {str(k).strip().lower() for k in settings.allowed_apps}:
