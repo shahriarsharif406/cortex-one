@@ -141,11 +141,9 @@ def test_the_whole_flow(flow):
     assert stopped.json()["status"] == "ok" and FakePopen.made[0].killed
 
     # ---- GUI session: refused while disabled ...
-    gate = call("POST", "/actions/gui_session_start", json={"params": {"minutes": "3"}}, headers=owner).json()
-    if gate["status"] == "confirmation_required":
-        gate = call("POST", "/actions/gui_session_start", headers=owner,
-                    json={"params": {"minutes": "3"}, "confirm_token": gate["confirm_token"]}).json()
-    assert gate["status"] != "ok" and not engine.ctx.gui.active()
+    gate = call("POST", "/actions/gui_session_start", json={"params": {"minutes": "3"}}, headers=owner)
+    assert gate.status_code == 400 and "confirm_token" not in gate.text      # refused before any confirmation
+    assert not engine.ctx.gui.active()
     # ... and works with a fake backend once the owner turned it on
     settings.gui_agent = {"enabled": True, "allowed_apps": ["notepad"], "max_session_minutes": 5,
                           "max_actions": 6}

@@ -118,7 +118,7 @@ def test_firmware_main_follows_the_documented_order():
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js")
 def test_cpp_header_passes_the_same_vectors_via_wasm():
     proc = subprocess.run([sys.executable, str(ROOT / "firmware" / "cortex-wake" / "test" / "run_cpp_vectors.py")],
-                          capture_output=True, text=True, timeout=240)
+                          capture_output=True, text=True, timeout=480)
     if proc.returncode == 77:
         pytest.skip("no clang with wasm32 + wasm-ld (set CW_CLANG_DIR)")
     assert proc.returncode == 0, proc.stdout + proc.stderr

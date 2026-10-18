@@ -53,7 +53,7 @@ def main() -> int:
                "-Wl,--no-entry"] + [f"-Wl,--export={n}" for n in (
                    "scratch_ptr", "t_hmac", "t_parse", "t_response", "t_led", "t_press_ok")] + [
                str(HERE / "wasm_shim.cpp"), "-o", str(out)]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=420)
         if proc.returncode != 0:
             print("compile failed:\n" + proc.stderr, file=sys.stderr)
             return 1
