@@ -1,4 +1,4 @@
-﻿.venv/
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -17,3 +17,6 @@ key.properties
 *.keystore
 .env.*
 !.env.example
+firmware/cortex-wake/include/secrets.h
+firmware/cortex-wake/.pio/
+.pio/

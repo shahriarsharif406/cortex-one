@@ -167,4 +167,4 @@ python firmware/cortex-wake/test/run_cpp_vectors.py
 ```
 
 The C++ check compiles `cw_auth.h` with clang to WebAssembly and runs it in Node. It does **not**
-compile for the ESP32 (Xtensa); the sketch in `firmware/cortex-wake/` has never been compiled.
+run on the ESP32 (Xtensa). The sketch in `firmware/cortex-wake/` was compiled once with PlatformIO (esp32dev, build only, 2026-10-18) but has never been flashed or run.

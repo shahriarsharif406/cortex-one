@@ -1,7 +1,8 @@
 // Cortex Wake: ESP32 firmware. BLE server + HMAC-authenticated commands + servo that presses a
 // laptop power button. See docs/cortex-wake/PROTOCOL.md for the contract.
 //
-// !!! NOT COMPILED, NOT FLASHED, NOT TESTED ON HARDWARE. The authentication code it relies on
+// !!! NOT FLASHED, NOT TESTED ON HARDWARE. It compiles (PlatformIO, esp32dev, with and without
+// -DLIGHT_SENSOR_FITTED, build only, 2026-10-18). The authentication code it relies on
 // (include/cw_auth.h) is tested against shared vectors on a PC (WebAssembly), the rest is
 // written carefully but unverified. Read NEEDS_ME.md / BUILD_GUIDE_BN.md before the first run,
 // and do the first test with the servo NOT yet glued to the laptop.

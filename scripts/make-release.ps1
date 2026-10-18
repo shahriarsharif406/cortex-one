@@ -54,6 +54,8 @@ if ($PSCmdlet.ShouldProcess($zip, 'create release zip')) {
     if (Test-Path $zip) { Remove-Item $zip -Force }
     git archive --format=zip --prefix="cortex-one-$version/" -o $zip HEAD
     if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
+    & $py (Join-Path $PSScriptRoot 'verify_release.py') $zip
+    if ($LASTEXITCODE -ne 0) { Remove-Item $zip -Force; throw 'The release zip failed verification (secret/config/MAC). It was deleted.' }
     $size = (Get-Item $zip).Length
     $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
     $count = (& $py -c "import zipfile,sys; print(len(zipfile.ZipFile(sys.argv[1]).namelist()))" $zip).Trim()

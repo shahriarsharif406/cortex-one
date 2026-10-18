@@ -99,3 +99,22 @@ def test_wake_test_prep_parses():
     cmd = ("$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile("
            f"'{SCRIPTS / 'wake-test-prep.ps1'}',[ref]$null,[ref]$e); if ($e.Count) {{ exit 1 }}")
     assert subprocess.run(["powershell", "-NoProfile", "-Command", cmd], timeout=60).returncode == 0
+
+
+def test_verify_release_flags_secrets_and_real_macs(tmp_path):
+    import importlib.util
+    import zipfile
+
+    spec = importlib.util.spec_from_file_location("verify_release", SCRIPTS / "verify_release.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    clean = tmp_path / "clean.zip"
+    with zipfile.ZipFile(clean, "w") as z:
+        z.writestr("p/README.md", "fake mac AA:BB:CC:DD:EE:FF and 11-22-33-44-55-66")
+    assert mod.problems(str(clean)) == []
+    for name, body in [("p/config.json", "{}"), ("p/.env", "x"), ("p/firmware/include/secrets.h", "x"),
+                       ("p/notes.txt", "wifi 3C:97:0E:12:34:56 here"), ("p/a.db", "x")]:
+        bad = tmp_path / "bad.zip"
+        with zipfile.ZipFile(bad, "w") as z:
+            z.writestr(name, body)
+        assert mod.problems(str(bad)), name

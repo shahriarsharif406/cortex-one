@@ -112,7 +112,7 @@ def test_firmware_main_follows_the_documented_order():
     src = (ROOT / "firmware" / "cortex-wake" / "src" / "main.cpp").read_text(encoding="utf-8")
     assert src.index("parse_command") < src.index('prefs.putUInt("ctr"') < src.index("case cw::PRESS")
     assert "press_ms_ok" in src and "PRESS_WATCHDOG_MS" in src and "calOpenUntil" in src
-    assert "NOT COMPILED" in src      # honesty banner must stay until it is built on hardware
+    assert "NOT FLASHED, NOT TESTED ON HARDWARE" in src      # honesty banner must stay until it ran on hardware
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js")
