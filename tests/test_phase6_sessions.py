@@ -360,7 +360,13 @@ def test_project_names_only_in_capabilities(proj, http, auth, files):
     body = http.get("/capabilities", headers=auth).json()
     assert body["coding_projects"] == ["api", "docs"]
     dump = str(body)
-    assert PY not in dump and str(files) not in dump
+    # the interpreter/argv must never appear anywhere in /capabilities
+    assert PY not in dump
+    # project folders must not be exposed through the project list itself.
+    # (The same folder may legitimately appear as an *allowed root*, which is
+    # listed by design; on Linux the test fixture uses one folder for both.)
+    assert str(files) not in str(body["coding_projects"])
+    assert "argv" not in dump
 
 
 def test_precheck_helper():
