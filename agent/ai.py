@@ -158,6 +158,7 @@ def capabilities(s: Any) -> dict[str, list[str]]:
         "approved_scripts": sorted(s.approved_scripts),
         "allowed_domains": sorted(d.strip().lower() for d in s.allowed_domains if str(d).strip()),
         "log_names": sorted(s.allowed_logs),
+        "reports_dir": [str(s.reports_dir)],
         "watched_programs": sorted(s.watched_programs),
         "wake_targets": sorted(str(k).strip().lower() for k in
                                (s.wake_targets if isinstance(s.wake_targets, dict) else {})),
@@ -179,6 +180,7 @@ def setup_note(s: Any) -> str:
             + line("Approved scripts", c["approved_scripts"]) + "\n"
             + line("Approved websites", c["allowed_domains"]) + "\n"
             + line("Readable logs", c["log_names"]) + "\n"
+            + line("Reports folder (write_report / zip_folder save new files here)", c["reports_dir"]) + "\n"
             + line("Watched programs", c["watched_programs"]) + "\n"
             + line("Computers it can wake (Wake-on-LAN)", c["wake_targets"]) + "\n"
             + line("Coding projects (names only)", c["coding_projects"]))

@@ -199,6 +199,20 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
         out.append(Check(WARN, "স্ক্রিনশট ফোল্ডার allowed_roots-এর বাইরে; screenshot বন্ধ",
                          "screenshots_dir is outside allowed_roots; screenshots are off"))
 
+    # reports folder (write_report / zip_folder)
+    try:
+        rep = resolve_allowed(str(settings.reports_dir), settings.allowed_roots)
+        shots = Path(settings.screenshots_dir).resolve()
+        if rep == shots or shots in rep.parents:
+            out.append(Check(WARN, "reports_dir screenshots_dir-এর সঙ্গে মিলে গেছে; রিপোর্ট বন্ধ",
+                             "reports_dir overlaps screenshots_dir; reports are off"))
+        else:
+            out.append(Check(OK, "রিপোর্ট ফোল্ডার অনুমোদিত এলাকার ভেতরে",
+                             "reports folder is inside allowed roots"))
+    except ActionError:
+        out.append(Check(WARN, "রিপোর্ট ফোল্ডার allowed_roots-এর বাইরে; রিপোর্ট/zip বন্ধ",
+                         "reports_dir is outside allowed_roots; write_report and zip_folder are off"))
+
     # logs allowlist
     for short, path in settings.allowed_logs.items():
         if Path(path).is_file():

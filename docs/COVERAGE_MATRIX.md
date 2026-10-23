@@ -98,3 +98,7 @@ Not recommended: Playwright browser automation on the 4 GB laptop (heavy; `fetch
 
 - One test passed on Windows only by accident (`test_project_names_only_in_capabilities`): on Linux the test folder is both a coding-project path and an allowed root, and `/capabilities` lists allowed roots by design. The assertion was narrowed to the project list and `argv`. No code leak.
 - Suite on Linux (Python 3.13): 1286 passed, 21 skipped (Windows-only), 0 failed after that change.
+
+## Update (session 4, branch claude/safe-actions)
+
+Implemented from the "Top 8" list: `read_text_file`, `disk_usage_report`, `fetch_page_text`, `write_report`, `zip_folder` (items 1, 2, 3, 4, 6). Not done: `make_document`, `archive_file`, schedules. New setting: `reports_dir` (default `~/Documents/CortexOne-Reports`, must be inside `allowed_roots`). Linux suite: 1368 passed, 21 skipped. Not run on Windows or with a real website yet.

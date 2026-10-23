@@ -100,3 +100,10 @@ See `README.md` (what exists) and `NEEDS_ME.md` (what only the owner can do). Vo
 - **Cortex Wake laptop byte** = low nibble state (0 off, 1 on, 2 unknown, 3 blink) + high nibble raw light level. `reference.py classify_led` / `cw_auth.h classify_led` / `test_vectors.json led_cases` must stay identical (`reference.py --write` only). ON on a blinking laptop wakes it; PRESS on a blinking laptop still needs FORCE.
 - `tests/test_e2e_session3.py` is the scripted whole-flow test with the audit/HTTP leak grep: extend it for every new channel.
 - ctx.gui is built lazily and captures `gui_backend`/`gui_foreground` at first use: tests must inject fakes before the first access.
+
+## Session 4 actions (all `risk="low"`, rules to keep)
+- `read_text_file(path)`: `resolve_allowed`, regular non-link file, extension allowlist `TEXT_EXTENSIONS`, never secret-looking names (`_SENSITIVE_NAME`) or anything under `data_dir`; 64 KB / 8000 chars, scrubbed, untrusted.
+- `disk_usage_report(root)`: bounded walk (entries + seconds), junction pruning, names/GB only.
+- `fetch_page_text(url)`: `check_url` + no query/fragment + short path; every redirect re-checked against `allowed_domains`; resolved IPs must all be global (`_public_ips`); connection pinned to the checked IP; text types only; 200 KB; untrusted. Tests inject `Context.page_fetcher`; never hit the network in tests.
+- `write_report(name, text)` / `zip_folder(path, name)`: only create NEW files in `reports_dir` (inside `allowed_roots`, not the screenshots or data folder); name regex `_REPORT_NAME`; exclusive create / rename, never overwrite; zip skips secret-looking names and links, limits leave no partial file. `ActionSpec.long` lets only `text` exceed `MAX_PARAM_LEN`.
+- Mutation-checked: sensitive names, data_dir refusal, private-IP refusal, query refusal, overwrite, redirect re-check, extension allowlist, reports_dir confinement, name regex, zip limits, content types.
