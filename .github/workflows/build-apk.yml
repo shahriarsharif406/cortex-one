@@ -1,0 +1,41 @@
+name: Build Android APK (debug)
+
+# Manual only: Actions tab -> "Build Android APK (debug)" -> Run workflow.
+# No secrets are used or needed. The APK is DEBUG-signed on purpose: the project refuses
+# release builds without the owner's own android/key.properties (see mobile/android).
+# A debug APK is fine for the owner's own phone. Because the debug key is created fresh on
+# every run, an update from a different run needs the old app uninstalled first.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build apk --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cortex-one-debug-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
