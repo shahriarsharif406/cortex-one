@@ -196,6 +196,13 @@ def precheck_high(settings: Any, name: str, params: dict[str, Any]) -> str | Non
         key = str(getattr(settings, "remote_desktop_app", "rustdesk")).strip().lower()
         if key not in {str(k).strip().lower() for k in settings.allowed_apps}:
             return "The remote desktop app is not in allowed_apps."
+    elif name == "archive_file":
+        from .actions import ActionError, Context, archive_check
+
+        try:
+            archive_check(Context(settings=settings), str(params.get("src", "")))
+        except ActionError as e:
+            return str(e)
     return None
 
 

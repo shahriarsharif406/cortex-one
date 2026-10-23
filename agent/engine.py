@@ -41,7 +41,7 @@ class Engine:
 
     # Channels that only trusted in-process code may use. HTTP, SMS, the AI and
     # the CLI pass their own fixed ``via``, so a client can never reach this.
-    RESERVED_VIA = frozenset({"watcher"})
+    RESERVED_VIA = frozenset({"watcher", "schedule"})
     WATCHER_ACTIONS = frozenset({"hibernate", "lock"})
 
     def run(self, action: str, params: dict[str, Any], actor: str,
@@ -153,6 +153,16 @@ class Engine:
         if battery_percent > critical_threshold(self.settings):
             return None
         return self._execute(action, {}, "watcher", "watcher")
+
+    def run_scheduled(self, name: str, action: str, params: dict[str, Any]) -> ActionResult:
+        """The scheduler's only way in. Re-checks that the action is low-risk and allowed
+        for schedules; the channel ``schedule`` is reserved so no client can name it."""
+        from .schedule import allowed_action
+
+        if not allowed_action(action):
+            self.audit.log("schedule", "schedule", action, {}, "rejected", "not schedulable")
+            return ActionResult(False, "Not allowed.")
+        return self._execute(action, params, f"schedule:{name}"[:60], "schedule")
 
     def _execute(self, action: str, params: dict[str, Any], actor: str,
                  via: str) -> ActionResult:

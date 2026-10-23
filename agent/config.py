@@ -120,6 +120,12 @@ class Settings:
     # must not be, or sit inside, screenshots_dir (the phone can download from that one).
     reports_dir: Path = field(
         default_factory=lambda: Path.home() / "Documents" / "CortexOne-Reports")
+    # archive_file moves files here (nothing is ever deleted); inside allowed_roots too.
+    archive_dir: Path = field(
+        default_factory=lambda: Path.home() / "Documents" / "CortexOne-Archive")
+    # Owner-defined schedules: [{"name","action","params":{...},"every_minutes":N} or "daily_at":"HH:MM"]
+    # Only low-risk actions; the AI and the phone cannot create or change them.
+    schedules: list = field(default_factory=list)
     log_max_bytes: int = 1_000_000
     log_backups: int = 3
     # Screenshots: the newest N are kept, older agent-made ones are deleted.
@@ -192,7 +198,7 @@ class Settings:
                 if key not in fields:
                     s.unknown_keys.append(str(key)[:40])
                     continue
-                if key in ("allowed_roots", "screenshots_dir", "reports_dir"):
+                if key in ("allowed_roots", "screenshots_dir", "reports_dir", "archive_dir"):
                     ok = (isinstance(value, list) and all(isinstance(p, str) and p.strip() for p in value)
                           if key == "allowed_roots" else isinstance(value, str) and value.strip())
                     if not ok:
@@ -223,6 +229,7 @@ class Settings:
         raw["allowed_roots"] = [str(p) for p in self.allowed_roots]
         raw["screenshots_dir"] = str(self.screenshots_dir)
         raw["reports_dir"] = str(self.reports_dir)
+        raw["archive_dir"] = str(self.archive_dir)
         self.config_path.write_text(
             json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8"
         )

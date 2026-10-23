@@ -36,6 +36,9 @@ def cmd_serve(settings: Settings, _args) -> int:
     engine.notifier = Notifier.from_settings(settings)
     engine.watch.notifier = engine.notifier
     engine.watch.start()
+    from .schedule import Scheduler
+
+    Scheduler(engine).start()
     if settings.net_watch:
         engine.net.notifier = Notifier.from_settings(settings)
         engine.net.start()

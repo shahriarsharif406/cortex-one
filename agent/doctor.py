@@ -213,6 +213,13 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
         out.append(Check(WARN, "রিপোর্ট ফোল্ডার allowed_roots-এর বাইরে; রিপোর্ট/zip বন্ধ",
                          "reports_dir is outside allowed_roots; write_report and zip_folder are off"))
 
+    try:
+        resolve_allowed(str(settings.archive_dir), settings.allowed_roots)
+        out.append(Check(OK, "আর্কাইভ ফোল্ডার অনুমোদিত এলাকার ভেতরে", "archive folder is inside allowed roots"))
+    except ActionError:
+        out.append(Check(WARN, "আর্কাইভ ফোল্ডার allowed_roots-এর বাইরে; archive_file বন্ধ",
+                         "archive_dir is outside allowed_roots; archive_file is off"))
+
     # logs allowlist
     for short, path in settings.allowed_logs.items():
         if Path(path).is_file():
@@ -287,6 +294,12 @@ def run_checks(settings: Settings, env: Mapping[str, str] | None = None,
     from .watch import parse_rules
 
     rules, problems = parse_rules(settings)
+    from .schedule import parse_schedules
+
+    _sched, sched_problems = parse_schedules(settings)
+    for prob in sched_problems:
+        out.append(Check(WARN, f"schedules সমস্যা: {prob}", f"schedules problem: {prob}"))
+
     if not settings.watch_rules and not problems:
         out.append(Check(OK, "watch_rules নেই (কোডিং এজেন্ট ওয়াচার বন্ধ)",
                          "no watch_rules (coding-agent watcher is off)"))

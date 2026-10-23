@@ -1059,6 +1059,188 @@ def fetch_page_text(ctx: Context, params: dict[str, Any]) -> ActionResult:
                         {"host": host, "text": text, "truncated": cut, "untrusted": True})
 
 
+# ---- make_document: docx / xlsx written with the standard library only (no Office needed)
+MAX_DOC_ROWS = 2000
+MAX_DOC_COLS = 50
+_XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]")
+
+
+def _xml(text: str) -> str:
+    from xml.sax.saxutils import escape
+    return escape(_XML_BAD.sub("", text))
+
+
+def _col(i: int) -> str:
+    out = ""
+    i += 1
+    while i:
+        i, r = divmod(i - 1, 26)
+        out = chr(65 + r) + out
+    return out
+
+
+def build_docx(text: str) -> bytes:
+    paras = []
+    for line in text.split("\n"):
+        style = ""
+        if line.startswith("# "):
+            line, style = line[2:], "<w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr>"
+        elif line.startswith("## "):
+            line, style = line[3:], "<w:pPr><w:pStyle w:val=\"Heading2\"/></w:pPr>"
+        paras.append(f"<w:p>{style}<w:r><w:t xml:space=\"preserve\">{_xml(line)}</w:t></w:r></w:p>")
+    ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    doc = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+           f'<w:document xmlns:w="{ns}"><w:body>{"".join(paras)}</w:body></w:document>')
+    ct = ('<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+          '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+          '<Default Extension="xml" ContentType="application/xml"/>'
+          '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+          '</Types>')
+    rels = ('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+            '</Relationships>')
+    return _zip_bytes({"[Content_Types].xml": ct, "_rels/.rels": rels, "word/document.xml": doc})
+
+
+def build_xlsx(text: str) -> bytes:
+    """Rows are lines; cells are split on a tab if the line has one, otherwise on commas.
+    Cells are ALWAYS written as plain values (numbers or text), never as formulas, so
+    '=cmd...' in the data cannot become a spreadsheet formula."""
+    rows = []
+    lines = text.split("\n")
+    if len(lines) > MAX_DOC_ROWS:
+        raise ActionError(f"Too many rows (limit {MAX_DOC_ROWS}).")
+    for r, line in enumerate(lines, 1):
+        cells = line.split("\t") if "\t" in line else line.split(",")
+        if len(cells) > MAX_DOC_COLS:
+            raise ActionError(f"Too many columns (limit {MAX_DOC_COLS}).")
+        out = []
+        for c, cell in enumerate(cells):
+            cell = cell.strip()
+            ref = f"{_col(c)}{r}"
+            if re.fullmatch(r"-?\d{1,15}(\.\d{1,10})?", cell):
+                out.append(f'<c r="{ref}"><v>{cell}</v></c>')
+            elif cell:
+                out.append(f'<c r="{ref}" t="inlineStr"><is><t xml:space="preserve">{_xml(cell)}</t></is></c>')
+        rows.append(f'<row r="{r}">{"".join(out)}</row>')
+    sheet = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+             '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+             f'<sheetData>{"".join(rows)}</sheetData></worksheet>')
+    wb = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+          'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+          '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>')
+    ct = ('<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+          '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+          '<Default Extension="xml" ContentType="application/xml"/>'
+          '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+          '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+          '</Types>')
+    rels = ('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>')
+    wrels = ('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+             '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+             '</Relationships>')
+    return _zip_bytes({"[Content_Types].xml": ct, "_rels/.rels": rels, "xl/workbook.xml": wb,
+                       "xl/_rels/workbook.xml.rels": wrels, "xl/worksheets/sheet1.xml": sheet})
+
+
+def _zip_bytes(parts: dict[str, str]) -> bytes:
+    import io
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, body in parts.items():
+            z.writestr(name, body.encode("utf-8"))
+    return buf.getvalue()
+
+
+def make_document(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    from .logging_setup import scrub
+
+    kind = params["kind"].strip().lower()
+    if kind not in ("docx", "xlsx"):
+        raise ActionError("kind must be docx or xlsx.")
+    stem = _report_stem(params["name"])
+    folder = _reports_folder(ctx)
+    text = scrub(_clean_text(params["content"])).strip("\n")
+    if not text.strip():
+        raise ActionError("The document is empty.")
+    data = build_docx(text) if kind == "docx" else build_xlsx(text)
+    folder.mkdir(parents=True, exist_ok=True)
+    _reports_room(folder)
+    target = folder / f"{stem}.{kind}"
+    try:
+        with open(target, "xb") as f:
+            f.write(data)
+    except FileExistsError:
+        raise ActionError("A file with that name already exists; nothing was overwritten.")
+    except OSError:
+        raise ActionError("The document could not be written.")
+    return ActionResult(True, "Document saved.", {"file": target.name, "kind": kind})
+
+
+# ---- archive_file: MOVE (never delete) a file into archive_dir. High risk: two-step confirm.
+def _archive_folder(ctx: Context) -> Path:
+    try:
+        folder = resolve_allowed(str(ctx.settings.archive_dir), ctx.settings.allowed_roots)
+    except ActionError:
+        raise ActionError("Archive is off: archive_dir must be inside allowed_roots.")
+    _refuse_screenshots_folder(ctx, folder)
+    if _inside(folder, ctx.settings.data_dir):
+        raise ActionError("Archive is off: archive_dir must not be the agent's own data folder.")
+    return folder
+
+
+def archive_check(ctx: Context, src_raw: str) -> tuple[Path, Path]:
+    """Everything that can be known before asking the owner to confirm."""
+    src = resolve_allowed(src_raw, ctx.settings.allowed_roots)
+    folder = _archive_folder(ctx)
+    if src.is_symlink() or not src.is_file():
+        raise ActionError("Only a regular file can be archived.")
+    if _inside(src, folder) or _inside(src, ctx.settings.data_dir):
+        raise ActionError("That file cannot be archived.")
+    try:
+        shots = resolve_allowed(str(ctx.settings.screenshots_dir), ctx.settings.allowed_roots)
+        if _inside(src, shots):
+            raise ActionError("The screenshots folder is reserved for screenshots.")
+    except ActionError as e:
+        if "reserved" in str(e):
+            raise
+    return src, folder
+
+
+def archive_file(ctx: Context, params: dict[str, Any]) -> ActionResult:
+    src, folder = archive_check(ctx, params["src"])
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    for n in range(100):
+        suffix = "" if n == 0 else f"-{n}"
+        target = folder / f"{stamp}{suffix}_{src.name}"
+        if not target.exists():
+            break
+    else:
+        raise ActionError("Could not find a free archive name.")
+    try:
+        os.link(src, target)          # fails if the name is taken: never overwrites
+        os.unlink(src)
+    except OSError:
+        try:
+            if target.exists():
+                raise ActionError("Archive name taken; nothing was moved.")
+            shutil.copy2(src, target)  # different drive / no hard links: copy, verify, then remove
+            if target.stat().st_size != src.stat().st_size:
+                target.unlink()
+                raise ActionError("The copy did not match; nothing was moved.")
+            os.unlink(src)
+        except ActionError:
+            raise
+        except OSError:
+            raise ActionError("The file could not be archived.")
+    return ActionResult(True, "File moved to the archive (not deleted).",
+                        {"archived_as": target.name})
+
+
 # ------------------------------------------------------------- Wake-on-LAN
 _MAC_RE = re.compile(r"^(?:[0-9A-Fa-f]{2}([:-]))(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}$|^[0-9A-Fa-f]{12}$")
 WOL_PORT = 9
@@ -1435,6 +1617,14 @@ REGISTRY: dict[str, ActionSpec] = {s.name: s for s in [
     ActionSpec("zip_folder", "Zip a folder inside the allowed folders into the reports folder "
                "under a short name; never overwrites, skips secret-looking files", "low",
                zip_folder, ("path", "name")),
+    ActionSpec("make_document", "Create a NEW Word (docx) or Excel (xlsx) file in the reports "
+               "folder from plain text: docx = one paragraph per line ('# ' heading); xlsx = one "
+               "row per line, cells split by tab or comma, values only (no formulas)", "low",
+               make_document, ("kind", "name", "content"), redact=("content",),
+               long=("content",)),
+    ActionSpec("archive_file", "MOVE one file from the allowed folders into the archive folder "
+               "with a time-stamped name (never deletes, never overwrites)", "high",
+               archive_file, ("src",)),
 ]}
 
 

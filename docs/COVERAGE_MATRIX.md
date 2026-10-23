@@ -102,3 +102,5 @@ Not recommended: Playwright browser automation on the 4 GB laptop (heavy; `fetch
 ## Update (session 4, branch claude/safe-actions)
 
 Implemented from the "Top 8" list: `read_text_file`, `disk_usage_report`, `fetch_page_text`, `write_report`, `zip_folder` (items 1, 2, 3, 4, 6). Not done: `make_document`, `archive_file`, schedules. New setting: `reports_dir` (default `~/Documents/CortexOne-Reports`, must be inside `allowed_roots`). Linux suite: 1368 passed, 21 skipped. Not run on Windows or with a real website yet.
+
+Update 2 (branch claude/more-features): also implemented `make_document` (docx/xlsx), `archive_file` (high-risk move, no delete) and owner-defined `schedules`. Still not done: PDF output, power-survival queue, phone approval of Claude Code prompts, low-bandwidth mode. Linux suite: 1417 passed, 21 skipped.
